@@ -85,7 +85,7 @@ def upload_to_firebase(local_path, dest_path):
             blob.make_public()
             return blob.public_url
         except Exception:
-            return f"gs://{}/{}".format(FIREBASE_BUCKET, dest_path)
+   return f"gs://{FIREBASE_BUCKET}/{dest_path}"
     except Exception as e:
         st.error(f"Firebase 업로드 실패: {e}")
         return None
