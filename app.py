@@ -129,8 +129,7 @@ try:
     st.markdown(f"## 💌 {month}월 {day}일의 추억")
 except Exception:
     st.markdown(f"## 💌 {date_str}의 추억")
-
-
+    
     if st.button("📅 달력으로 돌아가기"):
         st.query_params.clear()
         st.rerun()
