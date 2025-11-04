@@ -1,111 +1,159 @@
+import os
 import streamlit as st
 import calendar
 from datetime import datetime
 
-st.set_page_config(layout="wide")
+st.set_page_config(page_title="하루 추억 캘린더", page_icon="📅", layout="wide")
+os.makedirs("temp_uploads", exist_ok=True)
 
-# -----------------------------
-# 상태 초기화
-# -----------------------------
-if "current_year" not in st.session_state:
-    st.session_state.current_year = datetime.now().year
-if "current_month" not in st.session_state:
-    st.session_state.current_month = datetime.now().month
-if "selected_date" not in st.session_state:
-    st.session_state.selected_date = None
+# 세션 초기값
+if "year" not in st.session_state:
+    st.session_state.year = datetime.now().year
+if "month" not in st.session_state:
+    st.session_state.month = datetime.now().month
 
-# -----------------------------
-# 로컬 변수는 세션 상태 참조
-# -----------------------------
-year = st.session_state.current_year
-month = st.session_state.current_month
+# 날짜 선택 상태
+query_params = st.query_params
+selected_date = query_params.get("date", [None])[0]
 
-# -----------------------------
-# 좌우 컬럼
-# -----------------------------
-col1, col2 = st.columns([1, 3])
+# 달력 렌더링 함수
+def render_calendar(year, month, small=False):
+    cal = calendar.Calendar()
+    month_days = cal.monthdayscalendar(year, month)
+    day_labels = ["월", "화", "수", "목", "금", "토", "일"]
 
-# -----------------------------
-# 왼쪽 미니 달력
-# -----------------------------
-with col1:
-    st.markdown(f"### 📅 {year}년 {month}월")
+    if small:
+        st.markdown(f"##### {year}년 {month}월")
+    else:
+        st.markdown(f"### 📅 {year}년 {month}월")
 
-    prev, next = st.columns(2)
-    if prev.button("◀ 이전달"):
-        if st.session_state.current_month == 1:
-            st.session_state.current_month = 12
-            st.session_state.current_year -= 1
-        else:
-            st.session_state.current_month -= 1
-        st.session_state.selected_date = None
-        st.experimental_rerun()
+    cols = st.columns(7)
+    for i, d in enumerate(day_labels):
+        cols[i].markdown(f"**{d}**")
 
-    if next.button("다음달 ▶"):
-        if st.session_state.current_month == 12:
-            st.session_state.current_month = 1
-            st.session_state.current_year += 1
-        else:
-            st.session_state.current_month += 1
-        st.session_state.selected_date = None
-        st.experimental_rerun()
-
-    cal = calendar.monthcalendar(year, month)
-    for week in cal:
+    for week in month_days:
         cols = st.columns(7)
         for i, day in enumerate(week):
             if day == 0:
-                cols[i].markdown(" ")
+                cols[i].write("")
             else:
-                if cols[i].button(str(day), key=f"mini_{day}"):
-                    st.session_state.selected_date = day
-                    st.experimental_rerun()
+                date_str = f"{year}-{month:02d}-{day:02d}"
+                letter_path = f"temp_uploads/{date_str}/letter.txt"
+                has_memory = os.path.exists(letter_path)
+                btn_label = f"📝 {day}" if has_memory else str(day)
+                btn_style = "color:#d97706;" if has_memory else ""
+                if cols[i].button(btn_label, key=f"{small}_{date_str}"):
+                    st.query_params["date"] = date_str
+                    st.rerun()
 
-# -----------------------------
-# 오른쪽 큰 달력
-# -----------------------------
-with col2:
-    st.markdown(f"### {month}월의 추억 달력")
+# 페이지 분기
+if not selected_date:
+    left, right = st.columns([1, 3])
 
-    cal = calendar.monthcalendar(year, month)
+    # ---------------- 왼쪽 작은 달력 ----------------
+    with left:
+        st.markdown("### 🗓 빠른 달력")
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c1:
+            if st.button("←", key="left_prev"):
+                st.session_state.month -= 1
+                if st.session_state.month == 0:
+                    st.session_state.month = 12
+                    st.session_state.year -= 1
+        with c2:
+            st.markdown(
+                f"<p style='text-align:center;font-weight:bold;'>{st.session_state.year}년 {st.session_state.month}월</p>",
+                unsafe_allow_html=True,
+            )
+        with c3:
+            if st.button("→", key="left_next"):
+                st.session_state.month += 1
+                if st.session_state.month == 13:
+                    st.session_state.month = 1
+                    st.session_state.year += 1
+        render_calendar(st.session_state.year, st.session_state.month, small=True)
+        st.markdown("---")
+        st.markdown("🔧 **이 공간은 추후 업데이트 예정입니다.**")
 
-    # CSS 스타일
-    st.markdown("""
-    <style>
-    div[data-testid="column"] button {
-        width: 80px;
-        height: 80px;
-        font-size: 16px;
-        border-radius: 15px;
-        margin: 3px;
-        background-color: #fff9e6;
-        box-shadow: 0 3px 8px rgba(0,0,0,0.1);
-    }
-    div[data-testid="column"] button:hover {
-        background-color: #ffefd5;
-        transform: scale(1.05);
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    # ---------------- 오른쪽 메인 ----------------
+    with right:
+        st.markdown(f"## 🌿 {st.session_state.month}월의 추억 달력")
+        render_calendar(st.session_state.year, st.session_state.month)
 
-    # 달력 버튼 배치
-    for week in cal:
-        cols = st.columns(7)
-        for i, day in enumerate(week):
-            if day == 0:
-                cols[i].markdown(" ")
-            else:
-                if cols[i].button(str(day), key=f"big_{day}"):
-                    st.session_state.selected_date = day
+        st.markdown("### 📖 이번 달의 추억 미리보기")
 
-# -----------------------------
-# 선택된 날짜의 추억 페이지
-# -----------------------------
-if st.session_state.selected_date:
-    d = st.session_state.selected_date
-    st.markdown(f"## 💌 {month}월 {d}일의 추억")
-    st.text_input("추억 제목", key="title_input")
-    st.text_area("편지 내용", key="content_input", height=200)
-    st.file_uploader("사진 업로드", type=["jpg","png","jpeg"], key="photo")
-    st.file_uploader("음성 업로드", type=["mp3","wav"], key="audio")
-    st.button("추억 저장", key="save_memory")
+        memories = []
+        for folder in sorted(os.listdir("temp_uploads")):
+            if folder.startswith(f"{st.session_state.year}-{st.session_state.month:02d}"):
+                letter_path = os.path.join("temp_uploads", folder, "letter.txt")
+                if os.path.exists(letter_path):
+                    with open(letter_path, "r", encoding="utf-8") as f:
+                        first_line = f.readline().strip()
+                    title = first_line if first_line else "제목 없는 추억"
+                    memories.append((folder, title))
+
+        if not memories:
+            st.info("이 달엔 아직 추억이 없어요 💌")
+        else:
+            for date_str, title in memories:
+                if st.button(f"📅 {date_str} | {title}", key=f"preview_{date_str}"):
+                    st.query_params["date"] = date_str
+                    st.rerun()
+
+        st.divider()
+        st.markdown("⬇️ 아래는 추후 확장 공간입니다 (사진 요약, 명언, 가족 메시지 등)")
+
+# ---------------- 특정 날짜 페이지 ----------------
+else:
+    date_str = selected_date
+    folder = f"temp_uploads/{date_str}"
+    os.makedirs(folder, exist_ok=True)
+    letter_path = os.path.join(folder, "letter.txt")
+
+    st.markdown(f"## 💌 {date_str}의 추억")
+    if st.button("⬅️ 달력으로 돌아가기"):
+        st.query_params.clear()
+        st.rerun()
+
+    existing_letter = ""
+    if os.path.exists(letter_path):
+        with open(letter_path, "r", encoding="utf-8") as f:
+            existing_letter = f.read()
+
+    with st.form("memory_form"):
+        sender = st.text_input("보낸이", placeholder="예: 손주 민수")
+        letter = st.text_area("내용", value=existing_letter, height=150)
+        photo = st.file_uploader("📸 사진 (선택)", type=["jpg", "jpeg", "png"])
+        audio = st.file_uploader("🎵 음성 (선택)", type=["mp3", "wav"])
+        submitted = st.form_submit_button("저장하기 💾")
+
+    if submitted:
+        if not sender:
+            st.warning("보낸이를 입력해주세요.")
+        elif not letter:
+            st.warning("내용을 적어주세요.")
+        else:
+            with open(letter_path, "w", encoding="utf-8") as f:
+                f.write(f"{sender}의 편지\n\n{letter}")
+            if photo:
+                with open(os.path.join(folder, photo.name), "wb") as f:
+                    f.write(photo.getbuffer())
+            if audio:
+                with open(os.path.join(folder, audio.name), "wb") as f:
+                    f.write(audio.getbuffer())
+            st.success("🌸 저장 완료!")
+            st.balloons()
+
+    if os.path.exists(letter_path):
+        st.markdown("### ✨ 편지 내용")
+        with open(letter_path, "r", encoding="utf-8") as f:
+            st.markdown(
+                f"<div style='padding:15px; background-color:#fff8f2; border-radius:12px;'>{f.read()}</div>",
+                unsafe_allow_html=True,
+            )
+
+        for file in os.listdir(folder):
+            if file.endswith((".jpg", ".jpeg", ".png")):
+                st.image(os.path.join(folder, file), caption="📸 사진", use_container_width=True)
+            elif file.endswith((".mp3", ".wav")):
+                st.audio(os.path.join(folder, file))
