@@ -109,10 +109,13 @@ else:
     letter_path = os.path.join(folder, "letter.txt")
     
     from datetime import datetime
-    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-    month = date_obj.month
-    day = date_obj.day
-    st.markdown(f"## 💌 {month}월 {day}일의 추억")
+    try:
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+        month = date_obj.month
+        day = date_obj.day
+        st.markdown(f"## 💌 {month}월 {day}일")
+    except Exception:
+        st.markdown(f"## 💌 {date_str}의 추억")
 
     if st.button("📅 달력으로 돌아가기"):
         st.query_params.clear()
