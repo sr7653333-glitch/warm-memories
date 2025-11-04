@@ -1,0 +1,8 @@
+streamlit
+firebase-admin
+google-cloud-storage
+python-dotenv
+Pillow
+pydub
+qrcode
+numpy
