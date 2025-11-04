@@ -13,38 +13,51 @@ if "current_year" not in st.session_state:
 if "current_month" not in st.session_state:
     st.session_state.current_month = datetime.now().month
 if "memories" not in st.session_state:
-    st.session_state.memories = {}  # 날짜별 추억 저장
+    st.session_state.memories = {}
 
 # -----------------------------
 # CSS 스타일
 # -----------------------------
 st.markdown("""
 <style>
-/* 달력 버튼 스타일 */
+/* 왼쪽 미니 달력 버튼 */
 button[kind="secondary"] {
     border: 1px solid #ccc !important;
-    border-radius: 10px !important;
+    border-radius: 8px !important;
     width: 45px !important;
     height: 45px !important;
     font-size: 16px !important;
     margin: 2px !important;
 }
-/* 전체 정렬 */
-[data-testid="column"]:nth-of-type(1) {
-    min-width: 230px !important;
+
+/* 오른쪽 큰 달력 버튼 */
+div[data-testid="column"] button[kind="secondary"] {
+    border-radius: 10px !important;
+    width: 100% !important;
+    height: 110px !important;
+    font-size: 18px !important;
+    white-space: pre-wrap !important;
+    text-align: center !important;
+    margin: 3px !important;
 }
-/* 오른쪽 제목 */
+
+/* 큰 달력 제목 */
 .big-calendar-title {
     text-align: center;
-    font-size: 28px;
-    font-weight: bold;
-    margin-bottom: 20px;
+    font-size: 32px;
+    font-weight: 700;
+    margin-bottom: 25px;
+}
+
+/* 왼쪽 컬럼 최소 너비 */
+[data-testid="column"]:nth-of-type(1) {
+    min-width: 230px !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # -----------------------------
-# 왼쪽 사이드 달력
+# 왼쪽 미니 달력
 # -----------------------------
 col1, col2 = st.columns([1, 3])
 
@@ -105,22 +118,20 @@ with col2:
     days = list(cal.itermonthdates(year, month))
     weeks = [days[i:i + 7] for i in range(0, len(days), 7)]
 
+    # 큰 달력 네모칸
     for week in weeks:
         cols = st.columns(7)
         for i, day in enumerate(week):
             if day.month == month:
                 day_key = day.strftime("%Y-%m-%d")
                 title = st.session_state.memories.get(day_key, {}).get("title", "")
-                btn_label = f"{day.day}\n{title}" if title else str(day.day)
+                btn_label = f"{day.day}\n\n{title}" if title else str(day.day)
                 if cols[i].button(btn_label, key=f"{day}big"):
                     st.session_state.selected_date = day
                     st.rerun()
             else:
                 cols[i].markdown(" ")
 
-    # -----------------------------
-    # 선택한 날짜의 추억 페이지
-    # -----------------------------
     st.markdown("---")
 
     if st.session_state.selected_date:
