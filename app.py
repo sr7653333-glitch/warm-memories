@@ -5,55 +5,71 @@ import calendar
 
 # 🌿 기본 설정
 st.set_page_config(page_title="하루 추억 캘린더", page_icon="📅", layout="centered")
-st.title("📅 하루 한 번, 따뜻한 추억 남기기")
-st.markdown("#### 날짜를 눌러 오늘의 추억을 남기거나, 그날의 추억을 다시 만나보세요 🌿")
 
 # 📁 저장 폴더 생성
 os.makedirs("temp_uploads", exist_ok=True)
 
-# 📆 달력 표시
-year = datetime.now().year
-month = datetime.now().month
-cal = calendar.Calendar()
+# URL 파라미터에서 날짜 가져오기
+query_params = st.query_params
+selected_date = query_params.get("date", [None])[0]
 
-st.markdown("### 🗓️ 이번 달")
-cols = st.columns(7)
-days = ["월", "화", "수", "목", "금", "토", "일"]
-for i, d in enumerate(days):
-    cols[i].markdown(f"**{d}**")
+# -----------------------------
+# 🗓️ 메인 달력 페이지
+# -----------------------------
+if not selected_date:
+    st.title("📅 하루 한 번, 따뜻한 추억 남기기")
+    st.markdown("#### 날짜를 눌러 오늘의 추억을 남기거나, 그날의 추억을 다시 만나보세요 🌿")
 
-month_days = cal.monthdayscalendar(year, month)
-clicked_date = st.session_state.get("clicked_date", None)
+    year = datetime.now().year
+    month = datetime.now().month
+    cal = calendar.Calendar()
 
-for week in month_days:
+    st.markdown("### 🗓️ 이번 달")
     cols = st.columns(7)
-    for i, day in enumerate(week):
-        if day == 0:
-            cols[i].write(" ")
-        else:
-            date_str = f"{year}-{month:02d}-{day:02d}"
-            folder_exists = any(date_str in folder for folder in os.listdir("temp_uploads"))
-            btn_label = f"🌸 {day}" if folder_exists else str(day)
-            if cols[i].button(btn_label, key=date_str):
-                st.session_state.clicked_date = date_str
-                clicked_date = date_str
+    days = ["월", "화", "수", "목", "금", "토", "일"]
+    for i, d in enumerate(days):
+        cols[i].markdown(f"**{d}**")
 
-st.divider()
+    month_days = cal.monthdayscalendar(year, month)
+    for week in month_days:
+        cols = st.columns(7)
+        for i, day in enumerate(week):
+            if day == 0:
+                cols[i].write(" ")
+            else:
+                date_str = f"{year}-{month:02d}-{day:02d}"
+                letter_path = f"temp_uploads/{date_str}/letter.txt"
+                has_memory = os.path.exists(letter_path)
 
-# 📖 날짜 선택 후 추억 남기기 / 보기
-if clicked_date:
-    st.markdown(f"## 📆 {clicked_date}의 추억")
-    folder = f"temp_uploads/{clicked_date}"
-    os.makedirs(folder, exist_ok=True)
+                if has_memory:
+                    btn_style = "background-color:#fef3c7; color:#000000; font-weight:bold; border-radius:8px;"
+                else:
+                    btn_style = "background-color:#ffffff; color:#000000; border-radius:8px;"
 
-    # 이미 저장된 추억 불러오기
+                if cols[i].button(str(day), key=date_str, help=f"{date_str} 추억 보기"):
+                    st.query_params["date"] = date_str
+                    st.rerun()
+
+# -----------------------------
+# 💌 추억 작성 / 보기 페이지
+# -----------------------------
+else:
+    date_str = selected_date
+    folder = f"temp_uploads/{date_str}"
     letter_path = os.path.join(folder, "letter.txt")
+
+    st.markdown(f"## 📆 {date_str}의 추억")
+    st.markdown("#### ✉️ 가족의 마음을 남겨주세요")
+
+    if st.button("📅 달력으로 돌아가기"):
+        st.query_params.clear()
+        st.rerun()
+
+    os.makedirs(folder, exist_ok=True)
     existing_letter = ""
     if os.path.exists(letter_path):
         with open(letter_path, "r", encoding="utf-8") as f:
             existing_letter = f.read()
-
-    st.markdown("### ✉️ 추억 남기기")
 
     with st.form("memory_form"):
         sender = st.text_input("보낸이 이름", placeholder="예: 손주 민수")
@@ -76,14 +92,17 @@ if clicked_date:
             if audio:
                 with open(os.path.join(folder, audio.name), "wb") as f:
                     f.write(audio.getbuffer())
-            st.success("🌸 추억이 저장되었어요! 어르신이 다시 보실 수 있습니다.")
+            st.success("🌼 추억이 저장되었어요! 어르신이 다시 보실 수 있습니다.")
             st.balloons()
 
-    # 저장된 추억 보기
+    st.divider()
     st.markdown("### 💞 그날의 추억 보기")
     if os.path.exists(letter_path):
         with open(letter_path, "r", encoding="utf-8") as f:
-            st.markdown(f"<div style='font-size:20px; background-color:#fff5f0; padding:15px; border-radius:12px;'>{f.read()}</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div style='font-size:20px; background-color:#fff5f0; padding:15px; border-radius:12px;'>{f.read()}</div>",
+                unsafe_allow_html=True,
+            )
     for file in os.listdir(folder):
         if file.endswith((".jpg", ".jpeg", ".png")):
             st.image(os.path.join(folder, file), caption="📸 가족 사진", use_container_width=True)
