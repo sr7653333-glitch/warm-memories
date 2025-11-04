@@ -107,7 +107,7 @@ else:
     folder = f"temp_uploads/{date_str}"
     os.makedirs(folder, exist_ok=True)
     letter_path = os.path.join(folder, "letter.txt")
-
+    
     from datetime import datetime
     date_obj = datetime.strptime(date_str, "%Y-%m-%d")
     month = date_obj.month
