@@ -108,14 +108,28 @@ else:
     os.makedirs(folder, exist_ok=True)
     letter_path = os.path.join(folder, "letter.txt")
     
-    from datetime import datetime
-    try:
-        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-        month = date_obj.month
-        day = date_obj.day
-        st.markdown(f"## 💌 {month}월 {day}일")
-    except Exception:
-        st.markdown(f"## 💌 {date_str}의 추억")
+import streamlit as st
+from datetime import datetime
+
+# 📅 날짜 선택 위젯
+selected_date = st.date_input("날짜를 선택하세요")
+
+# 🧠 상태에 날짜 저장 (매번 클릭할 때 갱신)
+if 'current_date' not in st.session_state or st.session_state.current_date != selected_date:
+    st.session_state.current_date = selected_date
+
+# 🔤 표시용 문자열 만들기
+date_str = st.session_state.current_date.strftime("%Y-%m-%d")
+
+# 💌 날짜 표시
+try:
+    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+    month = date_obj.month
+    day = date_obj.day
+    st.markdown(f"## 💌 {month}월 {day}일의 추억")
+except Exception:
+    st.markdown(f"## 💌 {date_str}의 추억")
+
 
     if st.button("📅 달력으로 돌아가기"):
         st.query_params.clear()
