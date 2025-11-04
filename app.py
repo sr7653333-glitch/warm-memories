@@ -1,35 +1,62 @@
 import streamlit as st
-from datetime import datetime, timedelta
+from datetime import datetime
 import calendar
 
 # 페이지 설정
 st.set_page_config(page_title="따뜻한 추억", layout="wide")
 
-# -----------------------------
-# 세션 상태 초기화
-# -----------------------------
+# 세션 초기화
 if "selected_date" not in st.session_state:
     st.session_state.selected_date = None
 if "current_year" not in st.session_state:
     st.session_state.current_year = datetime.now().year
 if "current_month" not in st.session_state:
     st.session_state.current_month = datetime.now().month
+if "memories" not in st.session_state:
+    st.session_state.memories = {}  # 날짜별 추억 저장
 
 # -----------------------------
-# 왼쪽: 달력
+# CSS 스타일
+# -----------------------------
+st.markdown("""
+<style>
+/* 달력 버튼 스타일 */
+button[kind="secondary"] {
+    border: 1px solid #ccc !important;
+    border-radius: 10px !important;
+    width: 45px !important;
+    height: 45px !important;
+    font-size: 16px !important;
+    margin: 2px !important;
+}
+/* 전체 정렬 */
+[data-testid="column"]:nth-of-type(1) {
+    min-width: 230px !important;
+}
+/* 오른쪽 제목 */
+.big-calendar-title {
+    text-align: center;
+    font-size: 28px;
+    font-weight: bold;
+    margin-bottom: 20px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# -----------------------------
+# 왼쪽 사이드 달력
 # -----------------------------
 col1, col2 = st.columns([1, 3])
 
 with col1:
     st.markdown("### 📅 추억 달력")
 
-    # 현재 월/연도 표시
     year = st.session_state.current_year
     month = st.session_state.current_month
 
-    col_a, col_b, col_c = st.columns([1, 2, 1])
-    with col_a:
-        if st.button("◀"):
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c1:
+        if st.button("◀", key="prev"):
             if month == 1:
                 st.session_state.current_year -= 1
                 st.session_state.current_month = 12
@@ -37,11 +64,11 @@ with col1:
                 st.session_state.current_month -= 1
             st.rerun()
 
-    with col_b:
-        st.markdown(f"<div style='text-align:center;font-size:20px;'>{year}년 {month}월</div>", unsafe_allow_html=True)
+    with c2:
+        st.markdown(f"<div style='text-align:center;font-size:18px;'>{year}년 {month}월</div>", unsafe_allow_html=True)
 
-    with col_c:
-        if st.button("▶"):
+    with c3:
+        if st.button("▶", key="next"):
             if month == 12:
                 st.session_state.current_year += 1
                 st.session_state.current_month = 1
@@ -49,48 +76,69 @@ with col1:
                 st.session_state.current_month += 1
             st.rerun()
 
-    # 달력 렌더링
     cal = calendar.Calendar()
     days = list(cal.itermonthdates(year, month))
-    weeks = [days[i:i+7] for i in range(0, len(days), 7)]
+    weeks = [days[i:i + 7] for i in range(0, len(days), 7)]
 
     for week in weeks:
         cols = st.columns(7)
         for i, day in enumerate(week):
             if day.month == month:
-                if cols[i].button(str(day.day), key=f"{day}"):
+                if cols[i].button(str(day.day), key=f"{day}mini"):
                     st.session_state.selected_date = day
                     st.rerun()
             else:
                 cols[i].markdown(" ")
 
     st.markdown("---")
-    st.markdown("이 아래는 추후 메뉴 공간입니다 ✨")
+    st.write("🌿 추후 메뉴 공간")
 
 # -----------------------------
-# 오른쪽: 선택한 날짜의 추억
+# 오른쪽 큰 달력 + 추억
 # -----------------------------
 with col2:
-    st.markdown("## 💖 오늘의 기록")
+    year = st.session_state.current_year
+    month = st.session_state.current_month
+    st.markdown(f"<div class='big-calendar-title'>{year}년 {month}월</div>", unsafe_allow_html=True)
+
+    cal = calendar.Calendar()
+    days = list(cal.itermonthdates(year, month))
+    weeks = [days[i:i + 7] for i in range(0, len(days), 7)]
+
+    for week in weeks:
+        cols = st.columns(7)
+        for i, day in enumerate(week):
+            if day.month == month:
+                day_key = day.strftime("%Y-%m-%d")
+                title = st.session_state.memories.get(day_key, {}).get("title", "")
+                btn_label = f"{day.day}\n{title}" if title else str(day.day)
+                if cols[i].button(btn_label, key=f"{day}big"):
+                    st.session_state.selected_date = day
+                    st.rerun()
+            else:
+                cols[i].markdown(" ")
+
+    # -----------------------------
+    # 선택한 날짜의 추억 페이지
+    # -----------------------------
+    st.markdown("---")
 
     if st.session_state.selected_date:
         date_obj = st.session_state.selected_date
         month = date_obj.month
         day = date_obj.day
+        date_key = date_obj.strftime("%Y-%m-%d")
 
         st.markdown(f"## 💌 {month}월 {day}일의 추억")
 
-        # 제목 입력
-        title = st.text_input("추억 제목을 입력하세요")
-
-        # 편지 내용
-        content = st.text_area("편지를 작성하세요", height=200)
-
-        # 파일 업로드
+        title = st.text_input("추억 제목", value=st.session_state.memories.get(date_key, {}).get("title", ""))
+        content = st.text_area("편지 내용", value=st.session_state.memories.get(date_key, {}).get("content", ""), height=200)
         photo = st.file_uploader("사진 업로드", type=["jpg", "png", "jpeg"])
-        audio = st.file_uploader("음성 파일 업로드", type=["mp3", "wav"])
+        audio = st.file_uploader("음성 업로드", type=["mp3", "wav"])
 
-        if st.button("추억 저장"):
+        if st.button("추억 저장", key="save_memory"):
+            st.session_state.memories[date_key] = {"title": title, "content": content}
             st.success(f"✅ {month}월 {day}일의 추억이 저장되었습니다!")
+            st.rerun()
     else:
         st.markdown("<div style='font-size:22px;color:gray;text-align:center;margin-top:150px;'>날짜를 선택해주세요 🌷</div>", unsafe_allow_html=True)
