@@ -74,21 +74,19 @@ def save_locally(data_bytes, filename):
         f.write(data_bytes)
     return str(path)
 
-def upload_to_firebase(local_path, dest_path):
-    if not bucket:
-        st.info("Firebase 버킷이 초기화되지 않았습니다. 로컬에만 저장됩니다.")
-        return None
+def upload_to_firebase(file_path, dest_path):
     try:
         blob = bucket.blob(dest_path)
-        blob.upload_from_filename(local_path)
+        blob.upload_from_filename(file_path)
         try:
             blob.make_public()
             return blob.public_url
         except Exception:
-   return f"gs://{FIREBASE_BUCKET}/{dest_path}"
+            return f"gs://{FIREBASE_BUCKET}/{dest_path}"
     except Exception as e:
         st.error(f"Firebase 업로드 실패: {e}")
         return None
+
 
 # 제출 처리
 if submitted:
