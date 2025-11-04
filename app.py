@@ -61,49 +61,52 @@ with col2:
     )
 
     cal = calendar.monthcalendar(year, month)
-    cal_html = """
-    <style>
-        .calendar-container {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 10px;
-            margin-top: 30px;
+
+    st.markdown(
+        """
+        <style>
+        div[data-testid="column"] > div {
+            display: flex;
+            justify-content: center;
         }
         .day-box {
+            width: 100px;
+            height: 100px;
             border-radius: 15px;
             background-color: #fff9e6;
             box-shadow: 0 0 5px rgba(0,0,0,0.1);
             text-align: center;
-            padding: 30px 0;
+            padding-top: 20px;
             font-size: 20px;
-            cursor: pointer;
+            margin: 5px;
             transition: 0.2s;
         }
         .day-box:hover {
             background-color: #ffefd5;
             transform: scale(1.05);
         }
-        .empty {
-            background-color: transparent;
-            box-shadow: none;
-        }
-    </style>
-    <div class='calendar-container'>
-    """
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
+    # Streamlit 그리드처럼 배치
     for week in cal:
-        for day in week:
+        cols = st.columns(7)
+        for i, day in enumerate(week):
             if day == 0:
-                cal_html += "<div class='day-box empty'></div>"
+                cols[i].markdown("<div class='day-box'></div>", unsafe_allow_html=True)
             else:
-                cal_html += f"""
-                <div class='day-box' onclick="window.location.href='/?day={day}'">
-                    <b>{day}</b><br><span style='font-size:14px;color:#666;'>추억 제목 예시</span>
-                </div>
-                """
-    cal_html += "</div>"
+                if cols[i].button(f"{day}\n추억 제목 예시", key=f"day_{day}"):
+                    st.session_state["selected_date"] = day
 
-    st.markdown(cal_html, unsafe_allow_html=True)
+# 클릭된 날짜의 추억 페이지 표시
+if st.session_state["selected_date"]:
+    selected_day = st.session_state["selected_date"]
+    st.markdown(f"<hr><h3 style='text-align:center;'>💌 {month}월 {selected_day}일의 추억</h3>", unsafe_allow_html=True)
+    st.text_area("추억 내용을 남겨보세요", "")
+    st.file_uploader("사진이나 파일 업로드")
+    st.button("저장하기")
 
 # URL 파라미터로 날짜 받기
 query_params = st.experimental_get_query_params()
