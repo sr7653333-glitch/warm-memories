@@ -3,14 +3,17 @@ import os
 import json
 from datetime import datetime
 
-st.set_page_config(page_title="하루 추억 캘린더", layout="wide")
+st.set_page_config(page_title="💌 하루 추억 캘린더", layout="wide")
+
+# -------------------- 폴더 및 세션 설정 --------------------
 os.makedirs("accounts", exist_ok=True)
 
-for key, default in [("logged_in", False), ("username", ""), ("role", ""), ("selected_date", None)]:
+for key, default in [("logged_in", False), ("username", ""), ("role", ""),
+                     ("selected_date", None)]:
     if key not in st.session_state:
         st.session_state[key] = default
 
-# 계정 로딩/저장
+# -------------------- 계정 로딩/저장 --------------------
 def load_accounts():
     path = "accounts/accounts.json"
     if os.path.exists(path):
@@ -25,7 +28,7 @@ def save_accounts(data):
 
 accounts = load_accounts()
 
-# 그룹 로딩/저장
+# -------------------- 그룹 로딩/저장 --------------------
 def load_groups():
     path = "accounts/groups.json"
     if os.path.exists(path):
@@ -40,6 +43,7 @@ def save_groups(data):
 
 groups = load_groups()
 
+# -------------------- 로그인/회원가입 --------------------
 if not st.session_state.logged_in:
     st.title("💌 하루 추억 캘린더 로그인")
     option = st.radio("선택하세요", ["로그인", "회원가입"])
@@ -68,6 +72,8 @@ if not st.session_state.logged_in:
                 st.session_state.role = user["role"]
             else:
                 st.warning("아이디 또는 비밀번호가 올바르지 않습니다.")
+
+# -------------------- 로그인 후 메인 --------------------
 else:
     username = st.session_state.username
     role = st.session_state.role
@@ -81,27 +87,32 @@ else:
 
     st.title("💌 하루 추억 캘린더")
 
-    # ------------------ 그룹 연결 UI ------------------
+    # ------------------ 가족 그룹 연결 ------------------
     st.markdown("### 👨‍👩‍👧‍👦 가족 그룹 연결")
+
     group_name = st.text_input("그룹 이름 입력")
     add_member = st.text_input("추가할 멤버 ID")
 
-    if st.button("그룹 생성 / 멤버 추가"):
-        # 그룹 이름이 이미 존재하는지 확인
-        grp = next((g for g in groups["groups"] if g["group_name"] == group_name), None)
-        # 추가할 멤버가 계정에 존재하는지 확인
+    if st.button("그룹 생성/멤버 추가"):
+        # 입력 멤버가 실제 존재하는지 확인
         member_exists = any(u["username"] == add_member for u in accounts["users"])
 
-        if grp:  # 기존 그룹
+        # 내가 포함된 그룹 중 동일 멤버 구성 그룹 존재 여부 확인
+        new_members_sorted = sorted([username, add_member])
+        duplicate_group = any(sorted(g["members"]) == new_members_sorted for g in groups["groups"])
+
+        # 그룹 생성/추가 처리
+        grp = next((g for g in groups["groups"] if g["group_name"] == group_name), None)
+
+        if grp:  # 기존 그룹 존재 시
             if add_member:
-                if add_member not in grp["members"]:
-                    if member_exists:
-                        grp["members"].append(add_member)
-                        st.success(f"{add_member}님을 기존 그룹에 추가했습니다.")
-                    else:
-                        st.error(f"'{add_member}' 아이디는 존재하지 않습니다.")
-                else:
+                if not member_exists:
+                    st.error(f"'{add_member}' 아이디는 존재하지 않습니다.")
+                elif add_member in grp["members"]:
                     st.warning(f"{add_member}님은 이미 그룹에 속해있습니다.")
+                else:
+                    grp["members"].append(add_member)
+                    st.success(f"{add_member}님을 기존 그룹에 추가했습니다.")
             else:
                 st.warning("추가할 멤버 ID를 입력해주세요.")
         else:  # 새 그룹 생성
@@ -111,23 +122,20 @@ else:
                 st.warning("그룹 생성 시 추가할 멤버 ID를 입력해주세요.")
             elif not member_exists:
                 st.error(f"'{add_member}' 아이디는 존재하지 않습니다.")
+            elif duplicate_group:
+                st.error("이미 동일한 멤버 구성의 그룹이 존재합니다. (그룹 이름이 달라도 불가능)")
             else:
-                groups["groups"].append({"group_name": group_name, "members": [username, add_member]})
+                groups["groups"].append({"group_name": group_name, "members": new_members_sorted})
+                save_groups(groups)
                 st.success(f"새 그룹 '{group_name}' 생성 완료!")
 
         save_groups(groups)
 
-    # ------------------ 그룹 목록 표시 ------------------
-    if role == "보낸이":
-        st.markdown("#### 내가 만든/속한 그룹")
-        for g in groups["groups"]:
-            if username in g["members"]:
-                st.write(f"{g['group_name']} - 멤버: {', '.join(g['members'])}")
-    else:  # 받는이
-        st.markdown("#### 내가 속한 그룹")
-        my_groups = [g for g in groups["groups"] if username in g["members"]]
-        if not my_groups:
-            st.info("아직 속한 그룹이 없습니다.")
-        else:
-            for g in my_groups:
-                st.write(f"{g['group_name']} - 보낸이: {', '.join([m for m in g['members'] if m != username])}")
+    # ------------------ 그룹 목록 ------------------
+    st.markdown("#### 📋 내가 속한 그룹 목록")
+    my_groups = [g for g in groups["groups"] if username in g["members"]]
+    if not my_groups:
+        st.info("아직 속한 그룹이 없습니다.")
+    else:
+        for g in my_groups:
+            st.write(f"**{g['group_name']}** - 멤버: {', '.join(g['members'])}")
