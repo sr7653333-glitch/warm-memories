@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import json
 from datetime import datetime
+import calendar
 
 st.set_page_config(page_title="하루 추억 캘린더", layout="wide")
 os.makedirs("accounts", exist_ok=True)
@@ -92,6 +93,7 @@ else:
     username = st.session_state.username
     role = st.session_state.role
 
+    # 사이드바 계정정보 + 로그아웃
     st.sidebar.markdown(f"**{username}님 ({role})**")
     if st.sidebar.button("로그아웃"):
         st.session_state.logged_in = False
@@ -102,53 +104,75 @@ else:
         if os.path.exists(SESSION_FILE):
             os.remove(SESSION_FILE)
 
-    st.title("💌 하루 추억 캘린더")
+    # 사이드바 메뉴
+    menu = st.sidebar.radio("메뉴", ["그룹 관리", "그룹 편집", "달력"])
 
-    # ------------------ 그룹 관리 ------------------
-    st.markdown("### 👨‍👩‍👧‍👦 그룹 관리")
-    
-    # 내가 속한 그룹만 표시
-    my_groups = [g for g in groups["groups"] if username in g["members"]]
-    
-    if my_groups:
-        for g in my_groups:
-            st.markdown(f"**{g['group_name']}** - 멤버: {', '.join(g['members'])}")
-            
-            # 그룹 나가기
-            if st.button(f"그룹 나가기 ({g['group_name']})", key=f"leave_{g['group_name']}"):
-                g["members"].remove(username)
-                if len(g["members"]) == 0:
-                    groups["groups"].remove(g)
-                save_groups(groups)
-                st.success(f"'{g['group_name']}' 그룹에서 나갔습니다.")
-            
-            # 멤버 추가
-            new_member = st.text_input(f"{g['group_name']}에 추가할 멤버 ID", key=f"add_{g['group_name']}")
-            if st.button(f"멤버 추가 ({g['group_name']})", key=f"add_btn_{g['group_name']}"):
-                if not any(u["username"] == new_member for u in accounts["users"]):
-                    st.error(f"'{new_member}' 아이디는 존재하지 않습니다.")
-                elif new_member in g["members"]:
-                    st.warning(f"{new_member}님은 이미 그룹에 속해있습니다.")
-                else:
-                    g["members"].append(new_member)
-                    save_groups(groups)
-                    st.success(f"{new_member}님을 '{g['group_name']}' 그룹에 추가했습니다.")
-    else:
-        st.info("아직 속한 그룹이 없습니다.")
-
-    # 새 그룹 생성
-    st.markdown("### ➕ 새 그룹 생성")
-    group_name = st.text_input("그룹 이름 입력", key="new_group")
-    add_member = st.text_input("추가할 멤버 ID", key="new_member")
-    if st.button("그룹 생성/멤버 추가"):
-        if not any(u["username"] == add_member for u in accounts["users"]):
-            st.error(f"'{add_member}' 아이디는 존재하지 않습니다.")
+    # ------------------ 메뉴 선택에 따른 화면 ------------------
+    if menu == "그룹 관리":
+        st.title("👨‍👩‍👧‍👦 그룹 관리")
+        # 내가 속한 그룹만 표시
+        my_groups = [g for g in groups["groups"] if username in g["members"]]
+        if my_groups:
+            for g in my_groups:
+                st.markdown(f"**{g['group_name']}** - 멤버: {', '.join(g['members'])}")
         else:
-            members_set = set([username, add_member])
-            exists = any(set(g["members"]) == members_set for g in groups["groups"])
-            if exists:
-                st.warning("이미 동일한 멤버로 구성된 그룹이 존재합니다.")
+            st.info("아직 속한 그룹이 없습니다.")
+
+        # 새 그룹 생성
+        st.markdown("### ➕ 새 그룹 생성")
+        group_name = st.text_input("그룹 이름 입력", key="new_group")
+        add_member = st.text_input("추가할 멤버 ID", key="new_member")
+        if st.button("그룹 생성/멤버 추가"):
+            if not any(u["username"] == add_member for u in accounts["users"]):
+                st.error(f"'{add_member}' 아이디는 존재하지 않습니다.")
             else:
-                groups["groups"].append({"group_name": group_name, "members": [username, add_member]})
-                save_groups(groups)
-                st.success(f"새 그룹 '{group_name}' 생성 완료!")
+                members_set = set([username, add_member])
+                exists = any(set(g["members"]) == members_set for g in groups["groups"])
+                if exists:
+                    st.warning("이미 동일한 멤버로 구성된 그룹이 존재합니다.")
+                else:
+                    groups["groups"].append({"group_name": group_name, "members": [username, add_member]})
+                    save_groups(groups)
+                    st.success(f"새 그룹 '{group_name}' 생성 완료!")
+
+    elif menu == "그룹 편집":
+        st.title("✏️ 그룹 편집")
+        my_groups = [g for g in groups["groups"] if username in g["members"]]
+        if my_groups:
+            for g in my_groups:
+                st.markdown(f"**{g['group_name']}** - 멤버: {', '.join(g['members'])}")
+
+                # 그룹 나가기
+                if st.button(f"그룹 나가기 ({g['group_name']})", key=f"leave_{g['group_name']}"):
+                    g["members"].remove(username)
+                    if len(g["members"]) == 0:
+                        groups["groups"].remove(g)
+                    save_groups(groups)
+                    st.success(f"'{g['group_name']}' 그룹에서 나갔습니다.")
+
+                # 멤버 추가
+                new_member = st.text_input(f"{g['group_name']}에 추가할 멤버 ID", key=f"add_{g['group_name']}")
+                if st.button(f"멤버 추가 ({g['group_name']})", key=f"add_btn_{g['group_name']}"):
+                    if not any(u["username"] == new_member for u in accounts["users"]):
+                        st.error(f"'{new_member}' 아이디는 존재하지 않습니다.")
+                    elif new_member in g["members"]:
+                        st.warning(f"{new_member}님은 이미 그룹에 속해있습니다.")
+                    else:
+                        g["members"].append(new_member)
+                        save_groups(groups)
+                        st.success(f"{new_member}님을 '{g['group_name']}' 그룹에 추가했습니다.")
+        else:
+            st.info("아직 속한 그룹이 없습니다.")
+
+    elif menu == "달력":
+        st.title("🗓 하루 추억 달력")
+        # 달력 UI (이전 코드 기반으로 구현)
+        year, month = datetime.now().year, datetime.now().month
+        cal = calendar.monthcalendar(year, month)
+        for week in cal:
+            cols = st.columns(7)
+            for i, day in enumerate(week):
+                if day == 0:
+                    cols[i].write(" ")
+                else:
+                    cols[i].button(str(day), key=f"day_{day}")
