@@ -6,11 +6,13 @@ from datetime import datetime
 st.set_page_config(page_title="하루 추억 캘린더", layout="wide")
 os.makedirs("accounts", exist_ok=True)
 
+# 세션 초기값
 for key, default in [("logged_in", False), ("username", ""), ("role", ""),
-                     ("selected_date", None)]:
+                     ("selected_date", None), ("refresh_token", None)]:
     if key not in st.session_state:
         st.session_state[key] = default
 
+# 계정 로딩/저장
 def load_accounts():
     path = "accounts/accounts.json"
     if os.path.exists(path):
@@ -23,6 +25,7 @@ def save_accounts(data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+# 그룹 로딩/저장
 def load_groups():
     path = "accounts/groups.json"
     if os.path.exists(path):
@@ -38,7 +41,16 @@ def save_groups(data):
 accounts = load_accounts()
 groups = load_groups()
 
-# 로그인/회원가입
+# 새로고침 시 로그인 유지
+if "login_cookie" not in st.session_state:
+    st.session_state.login_cookie = {}
+
+if not st.session_state.logged_in and st.session_state.login_cookie.get("username"):
+    st.session_state.logged_in = True
+    st.session_state.username = st.session_state.login_cookie["username"]
+    st.session_state.role = st.session_state.login_cookie["role"]
+
+# 로그인/회원가입 화면
 if not st.session_state.logged_in:
     st.title("💌 하루 추억 캘린더 로그인")
     option = st.radio("선택하세요", ["로그인", "회원가입"])
@@ -65,9 +77,10 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.session_state.role = user["role"]
+                # 새로고침 유지용 쿠키
+                st.session_state.login_cookie = {"username": username, "role": user["role"]}
             else:
                 st.warning("아이디 또는 비밀번호가 올바르지 않습니다.")
-
 else:
     username = st.session_state.username
     role = st.session_state.role
@@ -78,23 +91,28 @@ else:
         st.session_state.username = ""
         st.session_state.role = ""
         st.session_state.selected_date = None
+        st.session_state.login_cookie = {}
 
     st.title("💌 하루 추억 캘린더")
 
-    # ------------------ 내가 속한 그룹 ------------------
-    st.markdown("### 👨‍👩‍👧‍👦 내가 속한 그룹")
+    # ------------------ 그룹 관리 ------------------
+    st.markdown("### 👨‍👩‍👧‍👦 그룹 관리")
+    
+    # 내가 속한 그룹만 표시
     my_groups = [g for g in groups["groups"] if username in g["members"]]
-
+    
     if my_groups:
         for g in my_groups:
             st.markdown(f"**{g['group_name']}** - 멤버: {', '.join(g['members'])}")
-
+            
             # 그룹 나가기
             if st.button(f"그룹 나가기 ({g['group_name']})", key=f"leave_{g['group_name']}"):
                 g["members"].remove(username)
+                if len(g["members"]) == 0:
+                    groups["groups"].remove(g)
                 save_groups(groups)
                 st.success(f"'{g['group_name']}' 그룹에서 나갔습니다.")
-
+            
             # 멤버 추가
             new_member = st.text_input(f"{g['group_name']}에 추가할 멤버 ID", key=f"add_{g['group_name']}")
             if st.button(f"멤버 추가 ({g['group_name']})", key=f"add_btn_{g['group_name']}"):
@@ -109,7 +127,7 @@ else:
     else:
         st.info("아직 속한 그룹이 없습니다.")
 
-    # ------------------ 새 그룹 생성 ------------------
+    # 새 그룹 생성
     st.markdown("### ➕ 새 그룹 생성")
     group_name = st.text_input("그룹 이름 입력", key="new_group")
     add_member = st.text_input("추가할 멤버 ID", key="new_member")
