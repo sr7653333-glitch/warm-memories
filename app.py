@@ -12,12 +12,18 @@ os.makedirs("temp_uploads", exist_ok=True)
 os.makedirs("accounts", exist_ok=True)
 
 # 세션 초기화
-for key in ["logged_in", "username", "role", "year", "month", "selected_date"]:
-    if key not in st.session_state:
-        if key in ["year", "month"]:
-            st.session_state[key] = datetime.now().year if key == "year" else datetime.now().month
-        else:
-            st.session_state[key] = None if key == "selected_date" else False if key == "logged_in" else ""
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
+if "role" not in st.session_state:
+    st.session_state.role = ""
+if "year" not in st.session_state:
+    st.session_state.year = datetime.now().year
+if "month" not in st.session_state:
+    st.session_state.month = datetime.now().month
+if "selected_date" not in st.session_state:
+    st.session_state.selected_date = None
 
 # -----------------------------
 # 계정 관리 함수
@@ -37,12 +43,12 @@ def save_accounts(data):
 accounts = load_accounts()
 
 # -----------------------------
-# 로그인/회원가입 화면
+# 로그인 / 회원가입
 # -----------------------------
 if not st.session_state.logged_in:
     st.title("💌 하루 추억 캘린더 로그인")
     option = st.radio("선택하세요", ["로그인", "회원가입"])
-    
+
     if option == "회원가입":
         username = st.text_input("아이디", key="signup_id")
         password = st.text_input("비밀번호", type="password", key="signup_pw")
@@ -56,7 +62,6 @@ if not st.session_state.logged_in:
                 accounts["users"].append({"username": username, "password": password, "role": role})
                 save_accounts(accounts)
                 st.success("가입 완료! 로그인해주세요.")
-    
     else:  # 로그인
         username = st.text_input("아이디", key="login_id")
         password = st.text_input("비밀번호", type="password", key="login_pw")
@@ -66,7 +71,10 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.session_state.role = user["role"]
-                st.experimental_rerun()  # 버튼 클릭 후 rerun 안전
+                # 안전하게 rerun
+                st.experimental_set_query_params()  # 쿼리 초기화
+                st.session_state.selected_date = None
+                st.experimental_rerun()
             else:
                 st.warning("아이디 또는 비밀번호가 올바르지 않습니다.")
 
@@ -80,16 +88,18 @@ else:
     month = st.session_state.month
     selected_date = st.session_state.selected_date
 
-    # 사이드바
+    # ----------------- 사이드바 -----------------
     st.sidebar.markdown(f"**{username}님 ({role})**")
     if st.sidebar.button("로그아웃"):
-        for key in ["logged_in","username","role","selected_date"]:
-            st.session_state[key] = False if key=="logged_in" else ""
+        st.session_state.logged_in = False
+        st.session_state.username = ""
+        st.session_state.role = ""
+        st.session_state.selected_date = None
         st.experimental_rerun()
 
     st.title("💌 하루 추억 캘린더")
 
-    # 질문 파일
+    # ----------------- 질문 파일 -----------------
     question_file = f"temp_uploads/{username}_questions.json"
     if not os.path.exists(question_file):
         with open(question_file, "w", encoding="utf-8") as f:
@@ -97,14 +107,12 @@ else:
     with open(question_file, "r", encoding="utf-8") as f:
         questions = json.load(f)
 
-    # -----------------------------
-    # 날짜 선택 분기
-    # -----------------------------
+    # ----------------- 날짜 선택 분기 -----------------
     if not selected_date:
         # 달력 화면
         left, right = st.columns([1,3])
 
-        # 왼쪽 미니 달력
+        # 왼쪽 작은 달력
         with left:
             st.markdown(f"### 🗓 {year}년 {month}월")
             c1, c2, c3 = st.columns([1,2,1])
