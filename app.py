@@ -8,7 +8,7 @@ os.makedirs("accounts", exist_ok=True)
 
 # 세션 초기값
 for key, default in [("logged_in", False), ("username", ""), ("role", ""),
-                     ("selected_date", None), ("refresh_token", None)]:
+                     ("selected_date", None), ("login_cookie", None)]:
     if key not in st.session_state:
         st.session_state[key] = default
 
@@ -38,17 +38,20 @@ def save_groups(data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+# 세션 파일 기반 새로고침 유지
+SESSION_FILE = "accounts/sessions.json"
+
 accounts = load_accounts()
 groups = load_groups()
 
-# 새로고침 시 로그인 유지
-if "login_cookie" not in st.session_state:
-    st.session_state.login_cookie = {}
-
-if not st.session_state.logged_in and st.session_state.login_cookie.get("username"):
-    st.session_state.logged_in = True
-    st.session_state.username = st.session_state.login_cookie["username"]
-    st.session_state.role = st.session_state.login_cookie["role"]
+# 앱 시작 시 세션 복원
+if not st.session_state.logged_in and os.path.exists(SESSION_FILE):
+    with open(SESSION_FILE, "r", encoding="utf-8") as f:
+        session = json.load(f)
+        st.session_state.logged_in = True
+        st.session_state.username = session["username"]
+        st.session_state.role = session["role"]
+        st.session_state.login_cookie = {"username": session["username"], "role": session["role"]}
 
 # 로그인/회원가입 화면
 if not st.session_state.logged_in:
@@ -77,10 +80,14 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.session_state.role = user["role"]
-                # 새로고침 유지용 쿠키
                 st.session_state.login_cookie = {"username": username, "role": user["role"]}
+                # 세션 파일 저장
+                with open(SESSION_FILE, "w", encoding="utf-8") as f:
+                    json.dump(st.session_state.login_cookie, f)
             else:
                 st.warning("아이디 또는 비밀번호가 올바르지 않습니다.")
+
+# 로그인 후 화면
 else:
     username = st.session_state.username
     role = st.session_state.role
@@ -92,6 +99,8 @@ else:
         st.session_state.role = ""
         st.session_state.selected_date = None
         st.session_state.login_cookie = {}
+        if os.path.exists(SESSION_FILE):
+            os.remove(SESSION_FILE)
 
     st.title("💌 하루 추억 캘린더")
 
