@@ -6,14 +6,17 @@ import calendar
 
 st.set_page_config(page_title="하루 추억 캘린더", layout="wide")
 os.makedirs("accounts", exist_ok=True)
+os.makedirs("temp_uploads", exist_ok=True)
 
-# 세션 초기값
+# ------------------ 세션 초기값 ------------------
 for key, default in [("logged_in", False), ("username", ""), ("role", ""),
                      ("selected_date", None), ("login_cookie", None)]:
     if key not in st.session_state:
         st.session_state[key] = default
 
-# 계정 로딩/저장
+SESSION_FILE = "accounts/sessions.json"
+
+# ------------------ 계정 로딩/저장 ------------------
 def load_accounts():
     path = "accounts/accounts.json"
     if os.path.exists(path):
@@ -26,7 +29,7 @@ def save_accounts(data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# 그룹 로딩/저장
+# ------------------ 그룹 로딩/저장 ------------------
 def load_groups():
     path = "accounts/groups.json"
     if os.path.exists(path):
@@ -39,13 +42,10 @@ def save_groups(data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# 세션 파일 기반 새로고침 유지
-SESSION_FILE = "accounts/sessions.json"
-
 accounts = load_accounts()
 groups = load_groups()
 
-# 앱 시작 시 세션 복원
+# ------------------ 세션 파일 기반 새로고침 유지 ------------------
 if not st.session_state.logged_in and os.path.exists(SESSION_FILE):
     with open(SESSION_FILE, "r", encoding="utf-8") as f:
         session = json.load(f)
@@ -54,7 +54,7 @@ if not st.session_state.logged_in and os.path.exists(SESSION_FILE):
         st.session_state.role = session["role"]
         st.session_state.login_cookie = {"username": session["username"], "role": session["role"]}
 
-# 로그인/회원가입 화면
+# ------------------ 로그인/회원가입 ------------------
 if not st.session_state.logged_in:
     st.title("💌 하루 추억 캘린더 로그인")
     option = st.radio("선택하세요", ["로그인", "회원가입"])
@@ -88,12 +88,12 @@ if not st.session_state.logged_in:
             else:
                 st.warning("아이디 또는 비밀번호가 올바르지 않습니다.")
 
-# 로그인 후 화면
+# ------------------ 로그인 후 화면 ------------------
 else:
     username = st.session_state.username
     role = st.session_state.role
 
-    # 사이드바 계정정보 + 로그아웃
+    # 사이드바: 계정정보 + 로그아웃 + 메뉴
     st.sidebar.markdown(f"**{username}님 ({role})**")
     if st.sidebar.button("로그아웃"):
         st.session_state.logged_in = False
@@ -104,13 +104,11 @@ else:
         if os.path.exists(SESSION_FILE):
             os.remove(SESSION_FILE)
 
-    # 사이드바 메뉴
     menu = st.sidebar.radio("메뉴", ["그룹 관리", "그룹 편집", "달력"])
 
-    # ------------------ 메뉴 선택에 따른 화면 ------------------
+    # ------------------ 그룹 관리 ------------------
     if menu == "그룹 관리":
         st.title("👨‍👩‍👧‍👦 그룹 관리")
-        # 내가 속한 그룹만 표시
         my_groups = [g for g in groups["groups"] if username in g["members"]]
         if my_groups:
             for g in my_groups:
@@ -118,7 +116,6 @@ else:
         else:
             st.info("아직 속한 그룹이 없습니다.")
 
-        # 새 그룹 생성
         st.markdown("### ➕ 새 그룹 생성")
         group_name = st.text_input("그룹 이름 입력", key="new_group")
         add_member = st.text_input("추가할 멤버 ID", key="new_member")
@@ -135,6 +132,7 @@ else:
                     save_groups(groups)
                     st.success(f"새 그룹 '{group_name}' 생성 완료!")
 
+    # ------------------ 그룹 편집 ------------------
     elif menu == "그룹 편집":
         st.title("✏️ 그룹 편집")
         my_groups = [g for g in groups["groups"] if username in g["members"]]
@@ -164,15 +162,52 @@ else:
         else:
             st.info("아직 속한 그룹이 없습니다.")
 
+    # ------------------ 달력 ------------------
     elif menu == "달력":
         st.title("🗓 하루 추억 달력")
-        # 달력 UI (이전 코드 기반으로 구현)
         year, month = datetime.now().year, datetime.now().month
         cal = calendar.monthcalendar(year, month)
+
         for week in cal:
             cols = st.columns(7)
             for i, day in enumerate(week):
                 if day == 0:
                     cols[i].write(" ")
                 else:
-                    cols[i].button(str(day), key=f"day_{day}")
+                    date_str = f"{year}-{month:02d}-{day:02d}"
+                    label = f"📝 {day}" if os.path.exists(f"temp_uploads/{username}/{date_str}/letter.txt") else str(day)
+                    if cols[i].button(label, key=f"day_{day}"):
+                        st.session_state.selected_date = date_str
+
+        if st.session_state.selected_date:
+            date_str = st.session_state.selected_date
+            folder = f"temp_uploads/{username}/{date_str}"
+            os.makedirs(folder, exist_ok=True)
+            letter_path = os.path.join(folder, "letter.txt")
+
+            st.markdown(f"## 💌 {date_str}의 추억")
+            if st.button("⬅️ 달력으로 돌아가기"):
+                st.session_state.selected_date = None
+
+            existing_letter = ""
+            if os.path.exists(letter_path):
+                with open(letter_path,"r",encoding="utf-8") as f:
+                    existing_letter = f.read()
+
+            with st.form("memory_form"):
+                letter = st.text_area("내용", value=existing_letter, height=150)
+                photo = st.file_uploader("📸 사진", type=["jpg","png","jpeg"])
+                audio = st.file_uploader("🎵 음성", type=["mp3","wav"])
+                submitted = st.form_submit_button("저장하기 💾")
+
+            if submitted:
+                with open(letter_path,"w",encoding="utf-8") as f:
+                    f.write(letter)
+                if photo:
+                    with open(os.path.join(folder,photo.name),"wb") as f:
+                        f.write(photo.getbuffer())
+                if audio:
+                    with open(os.path.join(folder,audio.name),"wb") as f:
+                        f.write(audio.getbuffer())
+                st.success("🌸 저장 완료!")
+                st.balloons()
