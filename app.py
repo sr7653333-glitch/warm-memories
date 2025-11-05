@@ -163,10 +163,10 @@ def sender_dashboard(username):
                             json.dump(questions,f,ensure_ascii=False,indent=2)
                 st.success("추가 완료!")
 
-if not st.session_state.logged_in:
-    show_login()
-else:
+if st.session_state.logged_in:
     if st.session_state.role=="receiver":
         receiver_check(st.session_state.username)
     elif st.session_state.role=="sender":
         sender_dashboard(st.session_state.username)
+else:
+    show_login()
