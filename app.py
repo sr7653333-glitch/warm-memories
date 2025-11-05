@@ -1,7 +1,6 @@
 import streamlit as st
 import os
 import json
-from datetime import datetime
 
 st.set_page_config(page_title="하루 추억 캘린더", layout="wide")
 os.makedirs("accounts", exist_ok=True)
@@ -11,6 +10,7 @@ for key, default in [("logged_in", False), ("username", ""), ("role", ""),
     if key not in st.session_state:
         st.session_state[key] = default
 
+# 계정 로딩/저장
 def load_accounts():
     path = "accounts/accounts.json"
     if os.path.exists(path):
@@ -23,6 +23,9 @@ def save_accounts(data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+accounts = load_accounts()
+
+# 그룹 로딩/저장
 def load_groups():
     path = "accounts/groups.json"
     if os.path.exists(path):
@@ -35,8 +38,28 @@ def save_groups(data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-accounts = load_accounts()
 groups = load_groups()
+
+# 세션 저장/로드
+SESSION_FILE = "accounts/session.json"
+
+def save_session():
+    with open(SESSION_FILE, "w", encoding="utf-8") as f:
+        json.dump({
+            "logged_in": st.session_state.logged_in,
+            "username": st.session_state.username,
+            "role": st.session_state.role
+        }, f, ensure_ascii=False, indent=2)
+
+def load_session():
+    if os.path.exists(SESSION_FILE):
+        with open(SESSION_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            st.session_state.logged_in = data.get("logged_in", False)
+            st.session_state.username = data.get("username", "")
+            st.session_state.role = data.get("role", "")
+
+load_session()
 
 # 로그인/회원가입
 if not st.session_state.logged_in:
@@ -65,10 +88,9 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.session_state.role = user["role"]
+                save_session()
             else:
                 st.warning("아이디 또는 비밀번호가 올바르지 않습니다.")
-
-# 로그인 후 화면
 else:
     username = st.session_state.username
     role = st.session_state.role
@@ -79,53 +101,33 @@ else:
         st.session_state.username = ""
         st.session_state.role = ""
         st.session_state.selected_date = None
+        if os.path.exists(SESSION_FILE):
+            os.remove(SESSION_FILE)
 
     st.title("💌 하루 추억 캘린더")
 
-    # ------------------ 그룹 관리 ------------------
-    st.markdown("### 👨‍👩‍👧‍👦 그룹 관리")
-    
-    # 내가 속한 그룹만 표시
-    my_groups = [g for g in groups["groups"] if username in g["members"]]
-    
-    if my_groups:
-        for g in my_groups:
-            st.markdown(f"**{g['group_name']}** - 멤버: {', '.join(g['members'])}")
-            
-            # 그룹 나가기
-            if st.button(f"그룹 나가기 ({g['group_name']})", key=f"leave_{g['group_name']}"):
-                g["members"].remove(username)
-                save_groups(groups)
-                st.success(f"'{g['group_name']}' 그룹에서 나갔습니다.")
-            
-            # 멤버 추가
-            new_member = st.text_input(f"{g['group_name']}에 추가할 멤버 ID", key=f"add_{g['group_name']}")
-            if st.button(f"멤버 추가 ({g['group_name']})", key=f"add_btn_{g['group_name']}"):
-                if not any(u["username"] == new_member for u in accounts["users"]):
-                    st.error(f"'{new_member}' 아이디는 존재하지 않습니다.")
-                elif new_member in g["members"]:
-                    st.warning(f"{new_member}님은 이미 그룹에 속해있습니다.")
-                else:
-                    g["members"].append(new_member)
-                    save_groups(groups)
-                    st.success(f"{new_member}님을 '{g['group_name']}' 그룹에 추가했습니다.")
-    else:
-        st.info("아직 속한 그룹이 없습니다.")
-
-    # 새 그룹 생성
-    st.markdown("### ➕ 새 그룹 생성")
-    group_name = st.text_input("그룹 이름 입력", key="new_group")
-    add_member = st.text_input("추가할 멤버 ID", key="new_member")
+    st.markdown("### 👨‍👩‍👧‍👦 가족 그룹 연결")
+    group_name = st.text_input("그룹 이름 입력")
+    add_member = st.text_input("추가할 회원 ID")
     if st.button("그룹 생성/멤버 추가"):
+        # 존재하지 않는 아이디 체크
         if not any(u["username"] == add_member for u in accounts["users"]):
-            st.error(f"'{add_member}' 아이디는 존재하지 않습니다.")
+            st.warning("존재하지 않는 아이디입니다.")
         else:
-            # 동일 멤버로 기존 그룹 있는지 확인
-            members_set = set([username, add_member])
-            exists = any(set(g["members"]) == members_set for g in groups["groups"])
-            if exists:
-                st.warning("이미 동일한 멤버로 구성된 그룹이 존재합니다.")
+            # 동일 멤버 그룹 체크
+            member_set = set([username, add_member])
+            duplicate = next((g for g in groups["groups"] if set(g["members"]) == member_set), None)
+            if duplicate:
+                st.warning("동일 멤버로 구성된 그룹이 이미 존재합니다.")
             else:
                 groups["groups"].append({"group_name": group_name, "members": [username, add_member]})
                 save_groups(groups)
-                st.success(f"새 그룹 '{group_name}' 생성 완료!")
+                st.success(f"그룹 '{group_name}' 생성 및 {add_member} 추가 완료!")
+
+    st.markdown("#### 내가 속한 그룹")
+    my_groups = [g for g in groups["groups"] if username in g["members"]]
+    if not my_groups:
+        st.info("속한 그룹이 없습니다.")
+    else:
+        for g in my_groups:
+            st.write(f"{g['group_name']} - 멤버: {', '.join(g['members'])}")
