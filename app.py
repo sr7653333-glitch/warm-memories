@@ -6,26 +6,21 @@ import calendar
 
 st.set_page_config(page_title="하루 추억 캘린더", layout="wide")
 
-# -------------------- 폴더 초기화 --------------------
 os.makedirs("temp_uploads", exist_ok=True)
 os.makedirs("accounts", exist_ok=True)
 os.makedirs("groups", exist_ok=True)
 
-# -------------------- 세션 초기화 --------------------
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "username" not in st.session_state:
     st.session_state.username = ""
 if "role" not in st.session_state:
-    st.session_state.role = ""  # 'sender' or 'receiver'
-if "selected_date" not in st.session_state:
-    st.session_state.selected_date = None
+    st.session_state.role = ""
 if "year" not in st.session_state:
     st.session_state.year = datetime.now().year
 if "month" not in st.session_state:
     st.session_state.month = datetime.now().month
 
-# -------------------- 계정/그룹 관리 --------------------
 ACCOUNTS_FILE = "accounts/accounts.json"
 GROUPS_FILE = "groups/groups.json"
 
@@ -49,7 +44,6 @@ def save_groups(data):
     with open(GROUPS_FILE,"w",encoding="utf-8") as f:
         json.dump(data,f,ensure_ascii=False,indent=2)
 
-# -------------------- 로그인/가입 UI --------------------
 def show_login():
     st.header("로그인 / 가입")
     tab = st.radio("선택", ["로그인","가입"], index=0)
@@ -59,14 +53,16 @@ def show_login():
         username = st.text_input("아이디")
         password = st.text_input("비밀번호", type="password")
         if st.button("로그인"):
+            success = False
             for user in accounts["users"]:
                 if user["username"]==username and user["password"]==password:
                     st.session_state.logged_in = True
                     st.session_state.username = username
                     st.session_state.role = user["role"]
                     st.success("로그인 성공!")
-                    st.experimental_rerun()
-            else:
+                    success = True
+                    break
+            if not success:
                 st.error("아이디 또는 비밀번호가 틀렸습니다.")
     else:
         username = st.text_input("아이디")
@@ -82,7 +78,6 @@ def show_login():
                 save_accounts(accounts)
                 st.success("가입 완료! 로그인 해주세요.")
 
-# -------------------- 받는이 자가진단 --------------------
 def receiver_check(username):
     st.header(f"{username}님 출석체크 / 자가진단")
     date_str = datetime.now().strftime("%Y-%m-%d")
@@ -107,7 +102,6 @@ def receiver_check(username):
             json.dump(data,f,ensure_ascii=False,indent=2)
         st.success("저장 완료!")
 
-# -------------------- 달력 렌더링 --------------------
 def render_calendar(year, month, username=None, receiver=False):
     cal = calendar.Calendar()
     month_days = cal.monthdayscalendar(year, month)
@@ -143,7 +137,6 @@ def render_calendar(year, month, username=None, receiver=False):
                 else:
                     st.button(f"{emoji} {day}", key=f"{username}_{date_str}")
 
-# -------------------- 보낸이 관리 --------------------
 def sender_dashboard(username):
     st.header(f"{username}님 가족 자가진단 관리")
     groups_data = load_groups()
@@ -156,20 +149,20 @@ def sender_dashboard(username):
             st.markdown("---")
         st.subheader("추가 질문 작성")
         new_q = st.text_input("질문 추가", key=f"q_{g['name']}")
-        if st.button("추가", key=f"add_q_{g['name']}"):
-            for member in g["members"]:
-                q_file = f"temp_uploads/{member}/questions.json"
-                questions = {"questions":[]}
-                if os.path.exists(q_file):
-                    with open(q_file,"r",encoding="utf-8") as f:
-                        questions = json.load(f)
-                if new_q not in questions["questions"]:
-                    questions["questions"].append(new_q)
-                    with open(q_file,"w",encoding="utf-8") as f:
-                        json.dump(questions,f,ensure_ascii=False,indent=2)
-            st.success("추가 완료!")
+        if new_q.strip() != "":
+            if st.button("추가", key=f"add_q_{g['name']}"):
+                for member in g["members"]:
+                    q_file = f"temp_uploads/{member}/questions.json"
+                    questions = {"questions":[]}
+                    if os.path.exists(q_file):
+                        with open(q_file,"r",encoding="utf-8") as f:
+                            questions = json.load(f)
+                    if new_q not in questions["questions"]:
+                        questions["questions"].append(new_q)
+                        with open(q_file,"w",encoding="utf-8") as f:
+                            json.dump(questions,f,ensure_ascii=False,indent=2)
+                st.success("추가 완료!")
 
-# -------------------- 화면 분기 --------------------
 if not st.session_state.logged_in:
     show_login()
 else:
