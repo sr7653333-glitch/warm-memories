@@ -1,26 +1,23 @@
-# app.py — 하루 추억 캘린더 (iframe 사용 안함 / 날짜 클릭 100% 동작)
-# 요구 기능:
-# - 로그인/회원가입(해시 저장) + 세션 복원
-# - 역할: 보낸이(모니터링/맞춤 질문 생성), 받는이(자가진단)
-# - 달력(버튼 기반) + 날짜 클릭 시 모달로 큰 화면 표시
-# - 날짜별 꾸미기(배경색/라운드/스티커) 저장 및 반영
-# - 그룹 생성(사용자 기준 중복 이름/멤버 구성 방지), 멤버 추가/나가기
+# app.py — 하루 추억 캘린더 (확실 버전)
+# - html_component/iframe 사용 안 함
+# - st.modal 미사용(버전 호환 래퍼로 dialog/experimental_dialog/인라인 대체)
+# - 날짜 클릭: Streamlit 버튼 이벤트 기반 (100% 동작)
+# - 들여쓰기: 스페이스 4칸
 
 import streamlit as st
 import os
 import json
 import hashlib
-import base64
 import calendar
 from datetime import datetime
 
-# -------------------- 기본 설정/폴더 --------------------
+# -------------------- 기본 설정 & 폴더 --------------------
 st.set_page_config(page_title="하루 추억 캘린더", layout="wide")
 os.makedirs("accounts", exist_ok=True)
 os.makedirs("accounts/memories", exist_ok=True)
 os.makedirs("accounts/decos", exist_ok=True)
 
-# -------------------- 유틸/저장/불러오기 --------------------
+# -------------------- 유틸 --------------------
 def load_json(path, default):
     if os.path.exists(path):
         try:
@@ -40,13 +37,13 @@ def hash_pw(pw: str) -> str:
 def is_sha256_hex(s: str) -> bool:
     return isinstance(s, str) and len(s) == 64 and all(c in "0123456789abcdef" for c in s)
 
-def mem_path(user): return f"accounts/memories/{user}.json"
-def load_mems(user): return load_json(mem_path(user), {"memories": {}})
-def save_mems(user, data): save_json(mem_path(user), data)
+def mem_path(username): return f"accounts/memories/{username}.json"
+def load_mems(username): return load_json(mem_path(username), {"memories": {}})
+def save_mems(username, data): save_json(mem_path(username), data)
 
-def deco_path(user): return f"accounts/decos/{user}.json"
-def load_decos(user): return load_json(deco_path(user), {"decos": {}})
-def save_decos(user, data): save_json(deco_path(user), data)
+def deco_path(username): return f"accounts/decos/{username}.json"
+def load_decos(username): return load_json(deco_path(username), {"decos": {}})
+def save_decos(username, data): save_json(deco_path(username), data)
 
 # -------------------- 데이터 파일 --------------------
 ACCOUNTS_FILE  = "accounts/accounts.json"
@@ -69,7 +66,7 @@ for u in accounts["users"]:
 if changed:
     save_json(ACCOUNTS_FILE, accounts)
 
-# -------------------- 세션 기본값 --------------------
+# -------------------- 세션 --------------------
 for k, v in [
     ("logged_in", False),
     ("username", ""),
@@ -80,13 +77,13 @@ for k, v in [
     if k not in st.session_state:
         st.session_state[k] = v
 
-# -------------------- 이전 세션 복원 --------------------
+# 이전 세션 복원
 if not st.session_state.logged_in and os.path.exists(SESSION_FILE):
-    s = load_json(SESSION_FILE, {})
-    if s:
+    sess = load_json(SESSION_FILE, {})
+    if sess:
         st.session_state.logged_in = True
-        st.session_state.username = s.get("username", "")
-        st.session_state.role = s.get("role", "")
+        st.session_state.username = sess.get("username", "")
+        st.session_state.role = sess.get("role", "")
 
 # -------------------- 로그인/회원가입 --------------------
 if not st.session_state.logged_in:
@@ -122,12 +119,11 @@ if not st.session_state.logged_in:
             else:
                 st.warning("아이디 또는 비밀번호가 올바르지 않습니다.")
 
-# -------------------- 로그인 후 메인 --------------------
+# -------------------- 로그인 후 --------------------
 else:
     username = st.session_state.username
     role = st.session_state.role
 
-    # 사이드바
     st.sidebar.markdown(f"**{username}님 ({role})**")
     if st.sidebar.button("로그아웃"):
         st.session_state.logged_in = False
@@ -155,6 +151,51 @@ else:
 
     STICKER_PRESETS = ["🌸", "🌼", "🌟", "💖", "✨", "🍀", "🧸", "🎀", "📸", "☕", "🍰", "🎈", "📝", "👣", "🎵"]
 
+    # -------------------- 공통: 상세 UI 렌더러 + 모달 호환 래퍼 --------------------
+    def render_detail_ui(sel_date: str):
+        st.subheader("📔 추억")
+        mem = load_mems(username)["memories"].get(sel_date, [])
+        if mem:
+            for item in mem:
+                st.markdown(f"- **{item['title']}** — {item['text']}")
+        else:
+            st.info("아직 기록이 없어요!")
+
+        with st.form("add_memory_form", clear_on_submit=True):
+            t = st.text_input("제목")
+            c = st.text_area("내용", height=120)
+            save_btn = st.form_submit_button("저장")
+            if save_btn:
+                if not t or not c:
+                    st.warning("제목과 내용을 입력해주세요.")
+                else:
+                    data = load_mems(username)
+                    data["memories"].setdefault(sel_date, []).append(
+                        {"title": t, "text": c, "ts": datetime.now().isoformat(timespec="seconds")}
+                    )
+                    save_mems(username, data)
+                    st.success("추억이 저장되었습니다!")
+                    st.rerun()
+
+        if st.button("닫기"):
+            st.session_state.selected_date = None
+            st.rerun()
+
+    def open_detail(sel_date: str):
+        Dialog = getattr(st, "dialog", None) or getattr(st, "experimental_dialog", None)
+        if Dialog:
+            with Dialog(f"📅 {sel_date}"):
+                render_detail_ui(sel_date)
+        else:
+            # 모달이 없는 구버전: 상단 고정 카드로 대체
+            st.markdown(
+                f"<div style='position:sticky;top:0;z-index:9;border:2px solid #eee;border-radius:16px;"
+                f"padding:16px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.08);'>"
+                f"<h3 style='margin:0 0 8px 0;'>📅 {sel_date}</h3></div>",
+                unsafe_allow_html=True
+            )
+            render_detail_ui(sel_date)
+
     # -------------------- 달력 --------------------
     if menu == "달력":
         st.title("🗓 하루 추억 달력")
@@ -165,7 +206,7 @@ else:
             st.markdown("#### 📅 달력 조정")
             year = st.number_input("연도", 2000, 2100, datetime.now().year, step=1)
             month = st.number_input("월", 1, 12, datetime.now().month, step=1)
-            decorate_mode = st.toggle("🎀 꾸미기 모드", value=False, help="날짜별 배경/스티커/모서리 둥글기 저장")
+            decorate_mode = st.toggle("🎀 꾸미기 모드", value=False)
 
             if st.session_state.selected_date:
                 st.info(f"선택된 날짜: **{st.session_state.selected_date}**")
@@ -175,21 +216,13 @@ else:
 
         with right:
             st.subheader(f"{int(year)}년 {int(month)}월")
-
-            # 주 단위 그리드 (Native Streamlit만 사용 → iframe 문제 없음)
             cal_mat = calendar.monthcalendar(int(year), int(month))
 
-            # 간단한 스타일
             st.markdown(
                 """
                 <style>
-                    .cal-card {
-                        border:1px solid rgba(0,0,0,.08);
-                        border-radius:12px;
-                        min-height:96px;
-                        padding:8px;
-                        background:#fff;
-                    }
+                    .cal-card { border:1px solid rgba(0,0,0,.08); border-radius:12px;
+                                min-height:96px; padding:8px; background:#fff; }
                     .cal-day { font-weight:800; margin-bottom:6px; }
                     .cal-stickers { font-size:20px; line-height:1.1; }
                 </style>
@@ -202,7 +235,7 @@ else:
                 for i, day in enumerate(week):
                     with cols[i]:
                         if day == 0:
-                            st.write("")  # 빈 칸
+                            st.write("")
                             continue
 
                         date_key = f"{int(year)}-{int(month):02d}-{day:02d}"
@@ -211,7 +244,6 @@ else:
                         radius = dconf.get("radius", "12px")
                         stickers = " ".join(dconf.get("stickers", []))
 
-                        # 카드(꾸미기 반영)
                         st.markdown(
                             f"<div class='cal-card' style='background:{bg}; border-radius:{radius};'>"
                             f"<div class='cal-day'>{day}</div>"
@@ -220,12 +252,11 @@ else:
                             unsafe_allow_html=True
                         )
 
-                        # 날짜 클릭(이벤트는 버튼으로만 처리 → 절대 중첩 렌더 안됨)
                         if st.button("열기", key=f"open_{date_key}", use_container_width=True):
                             st.session_state.selected_date = date_key
                             st.rerun()
 
-        # 꾸미기 패널
+        # 🎀 꾸미기 패널
         if decorate_mode:
             st.markdown("---")
             st.subheader("🎀 달력 꾸미기 (날짜별)")
@@ -243,27 +274,27 @@ else:
                     current_radius = d.get("radius", "12px")
                     if current_radius not in r_choices:
                         r_choices.append(current_radius)
-                    radius = st.selectbox("보더 라운드", r_choices, index=r_choices.index(current_radius))
+                    radius = st.selectbox("모서리 둥글기", r_choices, index=r_choices.index(current_radius))
                     picked = st.multiselect("스티커(이모지)", STICKER_PRESETS, default=d.get("stickers", []))
                     extra = st.text_input("추가 이모지/텍스트", value="")
                     if extra and extra not in picked:
                         picked.append(extra)
 
-                    cA, cB, cC = st.columns(3)
-                    with cA:
+                    col_s, col_r, col_c = st.columns(3)
+                    with col_s:
                         if st.button("🗂 꾸미기 저장"):
                             decos["decos"][date_key] = {"bg": bg, "radius": radius, "stickers": picked}
                             save_decos(username, decos)
-                            st.success("저장되었습니다! 달력/모달에 즉시 반영됩니다.")
+                            st.success("저장되었습니다!")
                             st.rerun()
-                    with cB:
+                    with col_r:
                         if st.button("♻️ 이 날짜 초기화"):
                             if date_key in decos["decos"]:
                                 del decos["decos"][date_key]
                                 save_decos(username, decos)
                                 st.info("초기화했습니다.")
                                 st.rerun()
-                    with cC:
+                    with col_c:
                         if st.button("선택 해제"):
                             st.session_state.selected_date = None
                             st.rerun()
@@ -278,56 +309,9 @@ else:
                         unsafe_allow_html=True
                     )
 
-# === 날짜 선택 시 모달(또는 대체 UI) 열기 ===
-if st.session_state.get("selected_date"):
-    sel = st.session_state["selected_date"]
-
-    # Streamlit 버전 호환: modal → dialog/experimental_dialog → inline fallback
-    Dialog = getattr(st, "dialog", None) or getattr(st, "experimental_dialog", None)
-
-    def render_detail_ui():
-        st.subheader("📔 추억")
-        mem = load_mems(username)["memories"].get(sel, [])
-        if mem:
-            for item in mem:
-                st.markdown(f"- **{item['title']}** — {item['text']}")
-        else:
-            st.info("아직 기록이 없어요!")
-
-        with st.form("add_memory_form", clear_on_submit=True):
-            t = st.text_input("제목")
-            c = st.text_area("내용", height=120)
-            save_btn = st.form_submit_button("저장")
-            if save_btn:
-                if not t or not c:
-                    st.warning("제목과 내용을 입력해주세요.")
-                else:
-                    data = load_mems(username)
-                    data["memories"].setdefault(sel, []).append(
-                        {"title": t, "text": c, "ts": datetime.now().isoformat(timespec="seconds")}
-                    )
-                    save_mems(username, data)
-                    st.success("추억이 저장되었습니다!")
-                    st.rerun()
-
-        if st.button("닫기"):
-            st.session_state.selected_date = None
-            st.rerun()
-
-    if Dialog:
-        # ✅ 최신/구버전 모두: dialog 또는 experimental_dialog 사용
-        with Dialog(f"📅 {sel}"):
-            render_detail_ui()
-    else:
-        # ✅ 모달이 없는 아주 구버전: 페이지 상단에 큰 카드로 대체
-        st.markdown(
-            f"<div style='position:sticky;top:0;z-index:9;border:2px solid #eee;border-radius:16px;"
-            f"padding:16px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.08);'>"
-            f"<h3 style='margin:0 0 8px 0;'>📅 {sel}</h3></div>",
-            unsafe_allow_html=True
-        )
-        render_detail_ui()
-
+        # 선택된 날짜가 있으면 상세 열기 (버전 호환)
+        if st.session_state.get("selected_date"):
+            open_detail(st.session_state["selected_date"])
 
     # -------------------- 자가진단 (받는이) --------------------
     if menu == "자가진단" and role == "받는이":
@@ -335,7 +319,6 @@ if st.session_state.get("selected_date"):
         today = datetime.now().strftime("%Y-%m-%d")
         done = any(r.get("username") == username and r.get("date") == today for r in diagnosis_data["records"])
 
-        # 기본 질문 5개
         def_qs = [
             ("오늘 기분은 어떠세요? (1~5)", 1, 5, 3, "mood"),
             ("어젯밤 잠은 편안하셨어요? (1~5)", 1, 5, 3, "sleep"),
@@ -349,14 +332,14 @@ if st.session_state.get("selected_date"):
         else:
             answers = {}
             for q in def_qs:
-                if isinstance(q[1], int):  # scale
+                if isinstance(q[1], int):
                     label, mn, mx, df, keyname = q
                     answers[keyname] = st.slider(label, mn, mx, df)
-                else:  # choice
+                else:
                     label, options, default, keyname = q
                     answers[keyname] = st.selectbox(label, options, index=options.index(default))
 
-            # 보낸이가 만든 맞춤 질문 불러오기
+            # 맞춤 질문
             st.markdown("### 📌 맞춤 질문")
             custom_for_me = [q for q in questions_data.get("custom_questions", []) if username in q.get("targets", [])]
             c_ans = {}
@@ -412,27 +395,21 @@ if st.session_state.get("selected_date"):
 
         st.markdown("---")
         st.subheader("🛠 맞춤 질문 만들기 & 배포")
-        # 맞춤 질문 생성
         with st.form("custom_q_form"):
             q_text = st.text_input("질문 내용 (예: '물을 충분히 드셨나요?')")
             q_type = st.selectbox("질문 유형", ["yesno", "scale", "choice", "text"], index=0)
             colA, colB, colC = st.columns(3)
-            with colA:
-                minv = st.number_input("scale 최소값", value=1, step=1)
-            with colB:
-                maxv = st.number_input("scale 최대값", value=5, step=1)
-            with colC:
-                dflt = st.number_input("scale 기본값", value=3, step=1)
+            with colA: minv = st.number_input("scale 최소값", value=1, step=1)
+            with colB: maxv = st.number_input("scale 최대값", value=5, step=1)
+            with colC: dflt = st.number_input("scale 기본값", value=3, step=1)
             opts_txt = st.text_input("choice 옵션(쉼표로 구분)", value="아니오,예")
             d_idx = st.number_input("choice 기본 인덱스", value=0, step=1)
 
-            # 타겟 선택
-            my_groups = [g for g in groups["groups"] if username in g["members"]]
             receivers = sorted({m for g in my_groups for m in g["members"] if m != username})
             targets = st.multiselect("질문을 받을 받는이", receivers)
 
-            submit_q = st.form_submit_button("질문 생성")
-            if submit_q:
+            sub = st.form_submit_button("질문 생성")
+            if sub:
                 if not q_text.strip():
                     st.warning("질문 내용을 입력하세요.")
                 elif not targets:
@@ -466,7 +443,6 @@ if st.session_state.get("selected_date"):
             new_name = st.text_input("그룹 이름")
             all_users = sorted([u["username"] for u in accounts["users"] if u["username"] != username])
             add_members = st.multiselect("멤버 추가", all_users)
-
             if st.button("그룹 생성"):
                 mine = [g for g in groups["groups"] if username in g["members"]]
                 proposed = [username] + add_members
@@ -500,7 +476,6 @@ if st.session_state.get("selected_date"):
                             save_json(GROUPS_FILE, groups)
                             st.success(f"{add_user} 님을 추가했습니다.")
                             st.rerun()
-
                 if st.button(f"그룹 나가기 ({g['group_name']})", key=f"leave_{g['group_name']}_{idx}"):
                     g["members"].remove(username)
                     if len(g["members"]) == 0:
@@ -510,6 +485,5 @@ if st.session_state.get("selected_date"):
                     st.rerun()
         else:
             st.info("아직 속한 그룹이 없습니다. 위에서 새 그룹을 만들어보세요.")
-
 
    
