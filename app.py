@@ -1,21 +1,16 @@
 import streamlit as st
 import os
 import json
+import hashlib
 from datetime import datetime
 import calendar
 
+# ---------------- 기본 설정 ----------------
 st.set_page_config(page_title="하루 추억 캘린더", layout="wide")
 os.makedirs("accounts", exist_ok=True)
+os.makedirs("accounts/memories", exist_ok=True)
 
-# ---------------- 기본 세션 설정 ----------------
-for key, default in [
-    ("logged_in", False), ("username", ""), ("role", ""),
-    ("selected_date", None), ("login_cookie", None), ("theme", "기본")
-]:
-    if key not in st.session_state:
-        st.session_state[key] = default
-
-# ---------------- 파일 로드 및 저장 함수 ----------------
+# ---------------- 유틸 ----------------
 def load_json(path, default):
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
@@ -25,6 +20,9 @@ def load_json(path, default):
 def save_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
+def hash_pw(pw: str) -> str:
+    return hashlib.sha256(pw.encode("utf-8")).hexdigest()
 
 # 데이터 파일 경로
 ACCOUNTS_FILE = "accounts/accounts.json"
@@ -36,6 +34,23 @@ DIAGNOSIS_FILE = "accounts/diagnosis.json"
 accounts = load_json(ACCOUNTS_FILE, {"users": []})
 groups = load_json(GROUPS_FILE, {"groups": []})
 diagnosis_data = load_json(DIAGNOSIS_FILE, {"records": []})
+
+def get_mem_path(username: str) -> str:
+    return f"accounts/memories/{username}.json"
+
+def load_memories(username: str):
+    return load_json(get_mem_path(username), {"memories": {}})
+
+def save_memories(username: str, data):
+    save_json(get_mem_path(username), data)
+
+# ---------------- 세션 기본값 ----------------
+for key, default in [
+    ("logged_in", False), ("username", ""), ("role", ""),
+    ("selected_date", None), ("login_cookie", None), ("theme", "기본")
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 # ---------------- 세션 복원 ----------------
 if not st.session_state.logged_in and os.path.exists(SESSION_FILE):
@@ -49,7 +64,7 @@ if not st.session_state.logged_in and os.path.exists(SESSION_FILE):
 # ---------------- 로그인 / 회원가입 ----------------
 if not st.session_state.logged_in:
     st.title("💌 하루 추억 캘린더 로그인")
-    option = st.radio("선택하세요", ["로그인", "회원가입"])
+    option = st.radio("선택하세요", ["로그인", "회원가입"], horizontal=True)
 
     if option == "회원가입":
         username = st.text_input("아이디", key="signup_id")
@@ -61,20 +76,26 @@ if not st.session_state.logged_in:
             elif any(u["username"] == username for u in accounts["users"]):
                 st.warning("이미 존재하는 아이디입니다.")
             else:
-                accounts["users"].append({"username": username, "password": password, "role": role})
+                accounts["users"].append({
+                    "username": username,
+                    "password": hash_pw(password),
+                    "role": role
+                })
                 save_json(ACCOUNTS_FILE, accounts)
                 st.success("가입 완료! 로그인해주세요.")
     else:
         username = st.text_input("아이디", key="login_id")
         password = st.text_input("비밀번호", type="password", key="login_pw")
         if st.button("로그인"):
-            user = next((u for u in accounts["users"] if u["username"] == username and u["password"] == password), None)
+            user = next((u for u in accounts["users"]
+                         if u["username"] == username and u["password"] == hash_pw(password)), None)
             if user:
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.session_state.role = user["role"]
                 st.session_state.login_cookie = {"username": username, "role": user["role"]}
                 save_json(SESSION_FILE, st.session_state.login_cookie)
+                st.rerun()
             else:
                 st.warning("아이디 또는 비밀번호가 올바르지 않습니다.")
 
@@ -95,7 +116,7 @@ else:
             os.remove(SESSION_FILE)
         st.rerun()
 
-    menu = st.sidebar.radio("메뉴", ["그룹 관리", "그룹 편집", "달력"])
+    menu = st.sidebar.radio("메뉴", ["그룹 관리", "그룹 편집", "달력"], index=2)
 
     # ---------- 테마 선택 ----------
     st.sidebar.markdown("### 🎨 달력 테마")
@@ -105,55 +126,52 @@ else:
     today = datetime.now().strftime("%Y-%m-%d")
     if role == "받는이":
         already_done = any(r["username"] == username and r["date"] == today for r in diagnosis_data["records"])
-        if not already_done:
-            st.info("🩺 오늘의 자가진단을 작성해주세요!")
-            mood = st.slider("오늘의 기분 (1=나쁨, 5=아주 좋음)", 1, 5, 3)
-            stress = st.slider("스트레스 정도 (1=없음, 5=매우 높음)", 1, 5, 3)
-            sleep = st.number_input("수면 시간 (시간 단위)", 0.0, 24.0, 7.0)
-            memo = st.text_area("한 줄 메모")
-
-            if st.button("자가진단 제출"):
-                diagnosis_data["records"].append({
-                    "username": username,
-                    "date": today,
-                    "mood": mood,
-                    "stress": stress,
-                    "sleep": sleep,
-                    "memo": memo
-                })
-                save_json(DIAGNOSIS_FILE, diagnosis_data)
-                st.success("오늘의 자가진단이 저장되었습니다!")
-                st.rerun()
-        else:
-            st.success("✅ 오늘은 이미 자가진단을 완료했습니다.")
+        with st.expander("🩺 오늘의 자가진단", expanded=not already_done):
+            if not already_done:
+                mood = st.slider("오늘의 기분 (1=나쁨, 5=아주 좋음)", 1, 5, 3)
+                stress = st.slider("스트레스 정도 (1=없음, 5=매우 높음)", 1, 5, 3)
+                sleep = st.number_input("수면 시간 (시간 단위)", 0.0, 24.0, 7.0, step=0.5)
+                memo = st.text_area("한 줄 메모")
+                if st.button("자가진단 제출"):
+                    diagnosis_data["records"].append({
+                        "username": username,
+                        "date": today,
+                        "mood": mood,
+                        "stress": stress,
+                        "sleep": sleep,
+                        "memo": memo
+                    })
+                    save_json(DIAGNOSIS_FILE, diagnosis_data)
+                    st.success("오늘의 자가진단이 저장되었습니다!")
+                    st.rerun()
+            else:
+                st.success("✅ 오늘은 이미 자가진단을 완료했습니다.")
 
     # ---------- 보낸이: 자가진단 모니터링 ----------
     if role == "보낸이" and menu == "그룹 관리":
         st.title("👀 받는이 자가진단 모니터링")
-
         my_groups = [g for g in groups["groups"] if username in g["members"]]
         receiver_list = []
         for g in my_groups:
             for member in g["members"]:
                 if member != username:
                     receiver_list.append(member)
-
+        receiver_list = sorted(set(receiver_list))
         if receiver_list:
-            recent_records = [
-                r for r in diagnosis_data["records"] if r["username"] in receiver_list
-            ]
+            recent_records = [r for r in diagnosis_data["records"] if r["username"] in receiver_list]
             if recent_records:
                 st.dataframe(
                     [{"날짜": r["date"], "아이디": r["username"], "기분": r["mood"],
                       "스트레스": r["stress"], "수면": r["sleep"], "메모": r["memo"]}
-                     for r in sorted(recent_records, key=lambda x: x["date"], reverse=True)]
+                     for r in sorted(recent_records, key=lambda x: (x["date"], x["username"]), reverse=True)],
+                    use_container_width=True
                 )
             else:
-                st.info("아직 받은이들의 자가진단 기록이 없습니다.")
+                st.info("아직 받는이들의 자가진단 기록이 없습니다.")
         else:
             st.warning("아직 연결된 받는이가 없습니다.")
 
-    # ---------- 그룹 관리 ----------
+    # ---------- 그룹 관리 (받는이) ----------
     if menu == "그룹 관리" and role == "받는이":
         st.title("👨‍👩‍👧‍👦 그룹 관리")
         my_groups = [g for g in groups["groups"] if username in g["members"]]
@@ -163,12 +181,48 @@ else:
         else:
             st.info("아직 속한 그룹이 없습니다.")
 
-    elif menu == "그룹 편집":
+    # ---------- 그룹 편집 ----------
+    if menu == "그룹 편집":
         st.title("✏️ 그룹 편집")
         my_groups = [g for g in groups["groups"] if username in g["members"]]
+
+        with st.expander("➕ 새 그룹 만들기", expanded=not my_groups):
+            new_name = st.text_input("그룹 이름")
+            all_users = sorted([u["username"] for u in accounts["users"] if u["username"] != username])
+            add_members = st.multiselect("멤버 추가", all_users)
+            if st.button("그룹 생성"):
+                if not new_name:
+                    st.warning("그룹 이름을 입력하세요.")
+                elif any(g["group_name"] == new_name for g in groups["groups"]):
+                    st.warning("같은 이름의 그룹이 이미 있습니다.")
+                else:
+                    new_group = {"group_name": new_name, "members": [username] + add_members}
+                    groups["groups"].append(new_group)
+                    save_json(GROUPS_FILE, groups)
+                    st.success(f"그룹 '{new_name}'이(가) 생성되었습니다.")
+                    st.rerun()
+
         if my_groups:
+            st.markdown("### 내 그룹")
             for g in my_groups:
-                st.markdown(f"**{g['group_name']}** - 멤버: {', '.join(g['members'])}")
+                col1, col2, col3 = st.columns([3, 2, 2])
+                with col1:
+                    st.markdown(f"**{g['group_name']}** - 멤버: {', '.join(g['members'])}")
+                with col2:
+                    # 멤버 추가
+                    candidates = [u["username"] for u in accounts["users"]
+                                  if u["username"] not in g["members"]]
+                    add_user = st.selectbox(
+                        f"멤버 추가 ({g['group_name']})", ["선택 없음"] + candidates, key=f"add_{g['group_name']}"
+                    )
+                with col3:
+                    if st.button(f"멤버 추가", key=f"add_btn_{g['group_name']}"):
+                        if add_user and add_user != "선택 없음":
+                            g["members"].append(add_user)
+                            save_json(GROUPS_FILE, groups)
+                            st.success(f"{add_user} 님을 추가했습니다.")
+                            st.rerun()
+                # 그룹 나가기
                 if st.button(f"그룹 나가기 ({g['group_name']})", key=f"leave_{g['group_name']}"):
                     g["members"].remove(username)
                     if len(g["members"]) == 0:
@@ -176,11 +230,9 @@ else:
                     save_json(GROUPS_FILE, groups)
                     st.success(f"'{g['group_name']}' 그룹에서 나갔습니다.")
                     st.rerun()
-        else:
-            st.info("아직 속한 그룹이 없습니다.")
 
     # ---------- 달력 ----------
-    elif menu == "달력":
+    if menu == "달력":
         st.title("🗓 하루 추억 달력")
 
         # 테마별 색상 스타일
@@ -194,6 +246,7 @@ else:
             f"""
             <style>
             .stApp {{ background-color: {theme_colors[st.session_state.theme]}; }}
+            .day-btn button {{ width: 100%; }}
             </style>
             """,
             unsafe_allow_html=True
@@ -202,16 +255,60 @@ else:
         left, right = st.columns([1, 3])
         with left:
             st.markdown("#### 📅 달력 조정")
-            year = st.number_input("연도", 2000, 2100, datetime.now().year)
-            month = st.number_input("월", 1, 12, datetime.now().month)
+            year = st.number_input("연도", 2000, 2100, datetime.now().year, step=1)
+            month = st.number_input("월", 1, 12, datetime.now().month, step=1)
+
+            # 선택된 날짜 표시
+            if st.session_state.selected_date:
+                st.info(f"선택된 날짜: **{st.session_state.selected_date}**")
+                if st.button("선택 해제"):
+                    st.session_state.selected_date = None
+                    st.rerun()
 
         with right:
-            st.markdown(f"### {year}년 {month}월")
+            st.markdown(f"### {int(year)}년 {int(month)}월")
             cal = calendar.monthcalendar(int(year), int(month))
-            for week in cal:
+            for week_idx, week in enumerate(cal):
                 cols = st.columns(7)
                 for i, day in enumerate(week):
                     if day == 0:
                         cols[i].write(" ")
                     else:
-                        cols[i].button(str(day), key=f"day_{year}_{month}_{day}")
+                        date_str = f"{int(year)}-{int(month):02d}-{day:02d}"
+                        with cols[i].container():
+                            # 버튼
+                            if cols[i].container().button(
+                                str(day),
+                                key=f"day_{int(year)}_{int(month)}_{day}"
+                            ):
+                                st.session_state.selected_date = date_str
+                                st.rerun()
+
+        # ------ 추억 작성/보기 ------
+        if st.session_state.selected_date:
+            st.markdown("---")
+            st.subheader(f"📔 {st.session_state.selected_date} 의 추억")
+            mem = load_memories(username)
+            todays = mem["memories"].get(st.session_state.selected_date, [])
+
+            if todays:
+                for idx, entry in enumerate(todays):
+                    st.markdown(f"- **{entry['title']}** — {entry['text']}")
+            else:
+                st.info("아직 기록이 없어요. 아래에 첫 추억을 남겨보세요!")
+
+            with st.form("add_memory_form", clear_on_submit=True):
+                title = st.text_input("제목")
+                text = st.text_area("내용", height=100)
+                submitted = st.form_submit_button("추억 저장")
+                if submitted:
+                    if not title or not text:
+                        st.warning("제목과 내용을 입력해주세요.")
+                    else:
+                        new_list = mem["memories"].get(st.session_state.selected_date, [])
+                        new_list.append({"title": title, "text": text, "ts": datetime.now().isoformat(timespec="seconds")})
+                        mem["memories"][st.session_state.selected_date] = new_list
+                        save_memories(username, mem)
+                        st.success("추억이 저장되었습니다!")
+                        st.rerun()
+
