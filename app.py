@@ -1,7 +1,7 @@
-# app.py — 하루 추억 캘린더 (확실 버전)
-# - html_component/iframe 사용 안 함
-# - st.modal 미사용(버전 호환 래퍼로 dialog/experimental_dialog/인라인 대체)
-# - 날짜 클릭: Streamlit 버튼 이벤트 기반 (100% 동작)
+# app.py — 하루 추억 캘린더 (호환/안정 버전)
+# - html_component/iframe 미사용
+# - st.modal 미사용: st.dialog / st.experimental_dialog / 인라인 대체 (callable 체크)
+# - 날짜 클릭: Streamlit 버튼 이벤트 기반 (중첩 렌더 없음)
 # - 들여쓰기: 스페이스 4칸
 
 import streamlit as st
@@ -151,7 +151,7 @@ else:
 
     STICKER_PRESETS = ["🌸", "🌼", "🌟", "💖", "✨", "🍀", "🧸", "🎀", "📸", "☕", "🍰", "🎈", "📝", "👣", "🎵"]
 
-    # -------------------- 공통: 상세 UI 렌더러 + 모달 호환 래퍼 --------------------
+    # -------------------- 모달/대화상자/인라인 대체 호환 래퍼 --------------------
     def render_detail_ui(sel_date: str):
         st.subheader("📔 추억")
         mem = load_mems(username)["memories"].get(sel_date, [])
@@ -182,16 +182,18 @@ else:
             st.rerun()
 
     def open_detail(sel_date: str):
-        Dialog = getattr(st, "dialog", None) or getattr(st, "experimental_dialog", None)
-        if Dialog:
+        Dialog = getattr(st, "dialog", None)
+        if not callable(Dialog):
+            Dialog = getattr(st, "experimental_dialog", None)
+        if callable(Dialog):
             with Dialog(f"📅 {sel_date}"):
                 render_detail_ui(sel_date)
         else:
             # 모달이 없는 구버전: 상단 고정 카드로 대체
             st.markdown(
                 f"<div style='position:sticky;top:0;z-index:9;border:2px solid #eee;border-radius:16px;"
-                f"padding:16px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.08);'>"
-                f"<h3 style='margin:0 0 8px 0;'>📅 {sel_date}</h3></div>",
+                f"padding:16px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.08);margin-bottom:12px;'>"
+                f"<h3 style='margin:0;'>📅 {sel_date}</h3></div>",
                 unsafe_allow_html=True
             )
             render_detail_ui(sel_date)
@@ -206,7 +208,7 @@ else:
             st.markdown("#### 📅 달력 조정")
             year = st.number_input("연도", 2000, 2100, datetime.now().year, step=1)
             month = st.number_input("월", 1, 12, datetime.now().month, step=1)
-            decorate_mode = st.toggle("🎀 꾸미기 모드", value=False)
+            decorate_mode = st.toggle("🎀 꾸미기 모드", value=False, help="날짜별 배경/스티커/모서리 둥글기 저장")
 
             if st.session_state.selected_date:
                 st.info(f"선택된 날짜: **{st.session_state.selected_date}**")
@@ -216,13 +218,21 @@ else:
 
         with right:
             st.subheader(f"{int(year)}년 {int(month)}월")
+
+            # 주 단위 그리드 (Native Streamlit만 사용 → iframe 문제 없음)
             cal_mat = calendar.monthcalendar(int(year), int(month))
 
+            # 간단한 스타일
             st.markdown(
                 """
                 <style>
-                    .cal-card { border:1px solid rgba(0,0,0,.08); border-radius:12px;
-                                min-height:96px; padding:8px; background:#fff; }
+                    .cal-card {
+                        border:1px solid rgba(0,0,0,.08);
+                        border-radius:12px;
+                        min-height:96px;
+                        padding:8px;
+                        background:#fff;
+                    }
                     .cal-day { font-weight:800; margin-bottom:6px; }
                     .cal-stickers { font-size:20px; line-height:1.1; }
                 </style>
@@ -235,7 +245,7 @@ else:
                 for i, day in enumerate(week):
                     with cols[i]:
                         if day == 0:
-                            st.write("")
+                            st.write("")  # 빈 칸
                             continue
 
                         date_key = f"{int(year)}-{int(month):02d}-{day:02d}"
@@ -244,6 +254,7 @@ else:
                         radius = dconf.get("radius", "12px")
                         stickers = " ".join(dconf.get("stickers", []))
 
+                        # 카드(꾸미기 반영)
                         st.markdown(
                             f"<div class='cal-card' style='background:{bg}; border-radius:{radius};'>"
                             f"<div class='cal-day'>{day}</div>"
@@ -252,6 +263,7 @@ else:
                             unsafe_allow_html=True
                         )
 
+                        # 날짜 클릭(버튼 이벤트) → 상태로만 제어
                         if st.button("열기", key=f"open_{date_key}", use_container_width=True):
                             st.session_state.selected_date = date_key
                             st.rerun()
@@ -285,7 +297,7 @@ else:
                         if st.button("🗂 꾸미기 저장"):
                             decos["decos"][date_key] = {"bg": bg, "radius": radius, "stickers": picked}
                             save_decos(username, decos)
-                            st.success("저장되었습니다!")
+                            st.success("저장되었습니다! 달력/상세에 즉시 반영됩니다.")
                             st.rerun()
                     with col_r:
                         if st.button("♻️ 이 날짜 초기화"):
@@ -485,5 +497,3 @@ else:
                     st.rerun()
         else:
             st.info("아직 속한 그룹이 없습니다. 위에서 새 그룹을 만들어보세요.")
-
-   
