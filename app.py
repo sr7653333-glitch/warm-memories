@@ -6,7 +6,6 @@ import hashlib
 from datetime import datetime
 import calendar
 import base64
-import imghdr
 
 # =========================
 # 기본 설정 & 폴더
@@ -37,6 +36,18 @@ def hash_pw(pw: str) -> str:
 
 def is_sha256_hex(s: str) -> bool:
     return isinstance(s, str) and len(s) == 64 and all(c in "0123456789abcdef" for c in s)
+
+# ▶ Python 3.13 호환: 업로더에서 이미지 MIME 추정 (imghdr 대체)
+def guess_mime_from_uploaded(up):
+    """st.file_uploader 반환값으로 안전하게 MIME 추정"""
+    if getattr(up, "type", None) and up.type.startswith("image/"):
+        return up.type  # 예: "image/png", "image/jpeg"
+    ext = os.path.splitext(getattr(up, "name", ""))[1].lower()
+    if ext in [".jpg", ".jpeg"]:
+        return "image/jpeg"
+    if ext == ".png":
+        return "image/png"
+    return "image/png"  # 기본값
 
 # 파일 경로
 ACCOUNTS_FILE  = "accounts/accounts.json"
@@ -346,9 +357,9 @@ else:
                     bg_img_b64 = dconf.get("bg_img_b64", None)
                     if up is not None:
                         raw = up.read()
-                        fmt = imghdr.what(None, h=raw) or "png"
+                        mime = guess_mime_from_uploaded(up)  # ← imghdr 없이 MIME 추정
                         b64 = base64.b64encode(raw).decode("utf-8")
-                        bg_img_b64 = f"data:image/{fmt};base64,{b64}"
+                        bg_img_b64 = f"data:{mime};base64,{b64}"
                         st.success("배경 이미지가 임시로 적용되었습니다. 저장을 눌러 반영하세요.")
 
                     c1, c2, c3 = st.columns(3)
@@ -614,4 +625,5 @@ else:
                     st.rerun()
         else:
             st.info("아직 속한 그룹이 없습니다. 위에서 새 그룹을 만들어보세요.")
+
 
