@@ -35,14 +35,14 @@ accounts = load_json(ACCOUNTS_FILE, {"users": []})
 groups = load_json(GROUPS_FILE, {"groups": []})
 diagnosis_data = load_json(DIAGNOSIS_FILE, {"records": []})
 
-def get_mem_path(username: str) -> str:
+def mem_path(username: str) -> str:
     return f"accounts/memories/{username}.json"
 
-def load_memories(username: str):
-    return load_json(get_mem_path(username), {"memories": {}})
+def load_mems(username: str):
+    return load_json(mem_path(username), {"memories": {}})
 
-def save_memories(username: str, data):
-    save_json(get_mem_path(username), data)
+def save_mems(username: str, data):
+    save_json(mem_path(username), data)
 
 # ---------------- 세션 기본값 ----------------
 for key, default in [
@@ -116,13 +116,14 @@ else:
             os.remove(SESSION_FILE)
         st.rerun()
 
-    menu = st.sidebar.radio("메뉴", ["자가진단", "그룹 편집", "달력"], index=2)
+    # ✅ 메뉴명을 "자가진단 모니터링"으로 변경
+    menu = st.sidebar.radio("메뉴", ["자가진단 모니터링", "그룹 편집", "달력"], index=0)
 
     # ---------- 테마 선택 ----------
     st.sidebar.markdown("### 🎨 달력 테마")
     st.session_state.theme = st.sidebar.selectbox("테마 선택", ["기본", "다크", "핑크", "미니멀"])
 
-    # ---------- 받는이: 자가진단 ----------
+    # ---------- 받는이: 자가진단 (오늘) ----------
     today = datetime.now().strftime("%Y-%m-%d")
     if role == "받는이":
         already_done = any(r["username"] == username and r["date"] == today for r in diagnosis_data["records"])
@@ -147,9 +148,10 @@ else:
             else:
                 st.success("✅ 오늘은 이미 자가진단을 완료했습니다.")
 
-    # ---------- 보낸이: 자가진단 모니터링 ----------
-    if role == "보낸이" and menu == "그룹 관리":
+    # ---------- 자가진단 모니터링 (보낸이 전용) ----------
+    if role == "보낸이" and menu == "자가진단 모니터링":
         st.title("👀 받는이 자가진단 모니터링")
+        # 내가 소속된 그룹들의 다른 멤버들만 추출
         my_groups = [g for g in groups["groups"] if username in g["members"]]
         receiver_list = []
         for g in my_groups:
@@ -158,30 +160,20 @@ else:
                     receiver_list.append(member)
         receiver_list = sorted(set(receiver_list))
         if receiver_list:
-            recent_records = [r for r in diagnosis_data["records"] if r["username"] in receiver_list]
-            if recent_records:
+            recent = [r for r in diagnosis_data["records"] if r["username"] in receiver_list]
+            if recent:
                 st.dataframe(
                     [{"날짜": r["date"], "아이디": r["username"], "기분": r["mood"],
                       "스트레스": r["stress"], "수면": r["sleep"], "메모": r["memo"]}
-                     for r in sorted(recent_records, key=lambda x: (x["date"], x["username"]), reverse=True)],
+                     for r in sorted(recent, key=lambda x: (x["date"], x["username"]), reverse=True)],
                     use_container_width=True
                 )
             else:
                 st.info("아직 받는이들의 자가진단 기록이 없습니다.")
         else:
-            st.warning("아직 연결된 받는이가 없습니다.")
+            st.warning("아직 연결된 받는이가 없습니다. '그룹 편집'에서 그룹을 만들어보세요.")
 
-    # ---------- 그룹 관리 (받는이) ----------
-    if menu == "그룹 관리" and role == "받는이":
-        st.title("👨‍👩‍👧‍👦 그룹 관리")
-        my_groups = [g for g in groups["groups"] if username in g["members"]]
-        if my_groups:
-            for g in my_groups:
-                st.markdown(f"**{g['group_name']}** - 멤버: {', '.join(g['members'])}")
-        else:
-            st.info("아직 속한 그룹이 없습니다.")
-
-    # ---------- 그룹 편집 ----------
+    # ---------- 그룹 편집 (양쪽 공용) ----------
     if menu == "그룹 편집":
         st.title("✏️ 그룹 편집")
         my_groups = [g for g in groups["groups"] if username in g["members"]]
@@ -222,6 +214,7 @@ else:
                             save_json(GROUPS_FILE, groups)
                             st.success(f"{add_user} 님을 추가했습니다.")
                             st.rerun()
+
                 # 그룹 나가기
                 if st.button(f"그룹 나가기 ({g['group_name']})", key=f"leave_{g['group_name']}"):
                     g["members"].remove(username)
@@ -230,6 +223,8 @@ else:
                     save_json(GROUPS_FILE, groups)
                     st.success(f"'{g['group_name']}' 그룹에서 나갔습니다.")
                     st.rerun()
+        else:
+            st.info("아직 속한 그룹이 없습니다. 위에서 새 그룹을 만들어보세요.")
 
     # ---------- 달력 ----------
     if menu == "달력":
@@ -268,31 +263,26 @@ else:
         with right:
             st.markdown(f"### {int(year)}년 {int(month)}월")
             cal = calendar.monthcalendar(int(year), int(month))
-            for week_idx, week in enumerate(cal):
+            for week in cal:
                 cols = st.columns(7)
                 for i, day in enumerate(week):
                     if day == 0:
                         cols[i].write(" ")
                     else:
                         date_str = f"{int(year)}-{int(month):02d}-{day:02d}"
-                        with cols[i].container():
-                            # 버튼
-                            if cols[i].container().button(
-                                str(day),
-                                key=f"day_{int(year)}_{int(month)}_{day}"
-                            ):
-                                st.session_state.selected_date = date_str
-                                st.rerun()
+                        if cols[i].button(str(day), key=f"day_{int(year)}_{int(month)}_{day}"):
+                            st.session_state.selected_date = date_str
+                            st.rerun()
 
         # ------ 추억 작성/보기 ------
         if st.session_state.selected_date:
             st.markdown("---")
             st.subheader(f"📔 {st.session_state.selected_date} 의 추억")
-            mem = load_memories(username)
-            todays = mem["memories"].get(st.session_state.selected_date, [])
+            mems = load_mems(username)
+            todays = mems["memories"].get(st.session_state.selected_date, [])
 
             if todays:
-                for idx, entry in enumerate(todays):
+                for entry in todays:
                     st.markdown(f"- **{entry['title']}** — {entry['text']}")
             else:
                 st.info("아직 기록이 없어요. 아래에 첫 추억을 남겨보세요!")
@@ -305,10 +295,13 @@ else:
                     if not title or not text:
                         st.warning("제목과 내용을 입력해주세요.")
                     else:
-                        new_list = mem["memories"].get(st.session_state.selected_date, [])
-                        new_list.append({"title": title, "text": text, "ts": datetime.now().isoformat(timespec="seconds")})
-                        mem["memories"][st.session_state.selected_date] = new_list
-                        save_memories(username, mem)
+                        new_list = mems["memories"].get(st.session_state.selected_date, [])
+                        new_list.append({
+                            "title": title,
+                            "text": text,
+                            "ts": datetime.now().isoformat(timespec="seconds")
+                        })
+                        mems["memories"][st.session_state.selected_date] = new_list
+                        save_mems(username, mems)
                         st.success("추억이 저장되었습니다!")
                         st.rerun()
-
