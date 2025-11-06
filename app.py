@@ -278,37 +278,56 @@ else:
                         unsafe_allow_html=True
                     )
 
-        # 날짜 선택 시 모달 열기 (URL/iframe 사용 안함)
-        if st.session_state.get("selected_date"):
-            sel = st.session_state["selected_date"]
-            with st.modal(f"📅 {sel}"):
-                st.subheader("📔 추억")
-                mem = load_mems(username)["memories"].get(sel, [])
-                if mem:
-                    for item in mem:
-                        st.markdown(f"- **{item['title']}** — {item['text']}")
+# === 날짜 선택 시 모달(또는 대체 UI) 열기 ===
+if st.session_state.get("selected_date"):
+    sel = st.session_state["selected_date"]
+
+    # Streamlit 버전 호환: modal → dialog/experimental_dialog → inline fallback
+    Dialog = getattr(st, "dialog", None) or getattr(st, "experimental_dialog", None)
+
+    def render_detail_ui():
+        st.subheader("📔 추억")
+        mem = load_mems(username)["memories"].get(sel, [])
+        if mem:
+            for item in mem:
+                st.markdown(f"- **{item['title']}** — {item['text']}")
+        else:
+            st.info("아직 기록이 없어요!")
+
+        with st.form("add_memory_form", clear_on_submit=True):
+            t = st.text_input("제목")
+            c = st.text_area("내용", height=120)
+            save_btn = st.form_submit_button("저장")
+            if save_btn:
+                if not t or not c:
+                    st.warning("제목과 내용을 입력해주세요.")
                 else:
-                    st.info("아직 기록이 없어요!")
-
-                with st.form("add_memory_form", clear_on_submit=True):
-                    t = st.text_input("제목")
-                    c = st.text_area("내용", height=120)
-                    save_btn = st.form_submit_button("저장")
-                    if save_btn:
-                        if not t or not c:
-                            st.warning("제목과 내용을 입력해주세요.")
-                        else:
-                            data = load_mems(username)
-                            data["memories"].setdefault(sel, []).append(
-                                {"title": t, "text": c, "ts": datetime.now().isoformat(timespec="seconds")}
-                            )
-                            save_mems(username, data)
-                            st.success("추억이 저장되었습니다!")
-                            st.rerun()
-
-                if st.button("닫기"):
-                    st.session_state.selected_date = None
+                    data = load_mems(username)
+                    data["memories"].setdefault(sel, []).append(
+                        {"title": t, "text": c, "ts": datetime.now().isoformat(timespec="seconds")}
+                    )
+                    save_mems(username, data)
+                    st.success("추억이 저장되었습니다!")
                     st.rerun()
+
+        if st.button("닫기"):
+            st.session_state.selected_date = None
+            st.rerun()
+
+    if Dialog:
+        # ✅ 최신/구버전 모두: dialog 또는 experimental_dialog 사용
+        with Dialog(f"📅 {sel}"):
+            render_detail_ui()
+    else:
+        # ✅ 모달이 없는 아주 구버전: 페이지 상단에 큰 카드로 대체
+        st.markdown(
+            f"<div style='position:sticky;top:0;z-index:9;border:2px solid #eee;border-radius:16px;"
+            f"padding:16px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.08);'>"
+            f"<h3 style='margin:0 0 8px 0;'>📅 {sel}</h3></div>",
+            unsafe_allow_html=True
+        )
+        render_detail_ui()
+
 
     # -------------------- 자가진단 (받는이) --------------------
     if menu == "자가진단" and role == "받는이":
