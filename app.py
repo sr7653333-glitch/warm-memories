@@ -24,6 +24,9 @@ def save_json(path, data):
 def hash_pw(pw: str) -> str:
     return hashlib.sha256(pw.encode("utf-8")).hexdigest()
 
+def is_sha256_hex(s: str) -> bool:
+    return isinstance(s, str) and len(s) == 64 and all(c in "0123456789abcdef" for c in s)
+
 # 데이터 파일 경로
 ACCOUNTS_FILE = "accounts/accounts.json"
 GROUPS_FILE = "accounts/groups.json"
@@ -35,6 +38,17 @@ accounts = load_json(ACCOUNTS_FILE, {"users": []})
 groups = load_json(GROUPS_FILE, {"groups": []})
 diagnosis_data = load_json(DIAGNOSIS_FILE, {"records": []})
 
+# ---------------- FIX #2: 비밀번호 혼재 자동 마이그레이션 ----------------
+changed = False
+for u in accounts["users"]:
+    pw = u.get("password", "")
+    if not is_sha256_hex(pw):      # 평문이면 → 해시로 변환
+        u["password"] = hash_pw(pw)
+        changed = True
+if changed:
+    save_json(ACCOUNTS_FILE, accounts)
+
+# ---------------- 메모리 파일 유틸 ----------------
 def mem_path(username: str) -> str:
     return f"accounts/memories/{username}.json"
 
@@ -71,13 +85,14 @@ if not st.session_state.logged_in:
         password = st.text_input("비밀번호", type="password", key="signup_pw")
         role = st.selectbox("역할", ["보낸이", "받는이"])
         if st.button("가입"):
-            if not username or not password:
+            in_username = username.strip()
+            if not in_username or not password:
                 st.warning("아이디와 비밀번호를 입력해주세요.")
-            elif any(u["username"] == username for u in accounts["users"]):
+            elif any(u["username"] == in_username for u in accounts["users"]):
                 st.warning("이미 존재하는 아이디입니다.")
             else:
                 accounts["users"].append({
-                    "username": username,
+                    "username": in_username,
                     "password": hash_pw(password),
                     "role": role
                 })
@@ -87,13 +102,21 @@ if not st.session_state.logged_in:
         username = st.text_input("아이디", key="login_id")
         password = st.text_input("비밀번호", type="password", key="login_pw")
         if st.button("로그인"):
-            user = next((u for u in accounts["users"]
-                         if u["username"] == username and u["password"] == hash_pw(password)), None)
+            in_username = username.strip()
+            in_hash = hash_pw(password)
+            user = next(
+                (
+                    u for u in accounts["users"]
+                    if u["username"] == in_username
+                    and (u["password"] == in_hash or u["password"] == password)  # 해시/평문 둘 다 허용
+                ),
+                None
+            )
             if user:
                 st.session_state.logged_in = True
-                st.session_state.username = username
+                st.session_state.username = in_username
                 st.session_state.role = user["role"]
-                st.session_state.login_cookie = {"username": username, "role": user["role"]}
+                st.session_state.login_cookie = {"username": in_username, "role": user["role"]}
                 save_json(SESSION_FILE, st.session_state.login_cookie)
                 st.rerun()
             else:
@@ -116,14 +139,14 @@ else:
             os.remove(SESSION_FILE)
         st.rerun()
 
-    # ✅ 메뉴명을 "자가진단 모니터링"으로 변경
+    # 메뉴 (원하면 이름 바꿔도 OK)
     menu = st.sidebar.radio("메뉴", ["자가진단 모니터링", "그룹 편집", "달력"], index=0)
 
     # ---------- 테마 선택 ----------
     st.sidebar.markdown("### 🎨 달력 테마")
     st.session_state.theme = st.sidebar.selectbox("테마 선택", ["기본", "다크", "핑크", "미니멀"])
 
-    # ---------- 받는이: 자가진단 (오늘) ----------
+    # ---------- 받는이: 오늘의 자가진단 ----------
     today = datetime.now().strftime("%Y-%m-%d")
     if role == "받는이":
         already_done = any(r["username"] == username and r["date"] == today for r in diagnosis_data["records"])
@@ -148,10 +171,9 @@ else:
             else:
                 st.success("✅ 오늘은 이미 자가진단을 완료했습니다.")
 
-    # ---------- 자가진단 모니터링 (보낸이 전용) ----------
+    # ---------- 자가진단 모니터링 (보낸이) ----------
     if role == "보낸이" and menu == "자가진단 모니터링":
         st.title("👀 받는이 자가진단 모니터링")
-        # 내가 소속된 그룹들의 다른 멤버들만 추출
         my_groups = [g for g in groups["groups"] if username in g["members"]]
         receiver_list = []
         for g in my_groups:
@@ -173,7 +195,7 @@ else:
         else:
             st.warning("아직 연결된 받는이가 없습니다. '그룹 편집'에서 그룹을 만들어보세요.")
 
-    # ---------- 그룹 편집 (양쪽 공용) ----------
+    # ---------- 그룹 편집 ----------
     if menu == "그룹 편집":
         st.title("✏️ 그룹 편집")
         my_groups = [g for g in groups["groups"] if username in g["members"]]
@@ -183,12 +205,21 @@ else:
             all_users = sorted([u["username"] for u in accounts["users"] if u["username"] != username])
             add_members = st.multiselect("멤버 추가", all_users)
             if st.button("그룹 생성"):
+                # ---------------- FIX #1: 내 그룹에서만 중복 검사 ----------------
+                my_groups_for_dup = [g for g in groups["groups"] if username in g["members"]]
+                proposed_members = [username] + add_members
+
+                dup_name = any(g["group_name"] == new_name for g in my_groups_for_dup)
+                dup_members = any(set(g["members"]) == set(proposed_members) for g in my_groups_for_dup)
+
                 if not new_name:
                     st.warning("그룹 이름을 입력하세요.")
-                elif any(g["group_name"] == new_name for g in groups["groups"]):
-                    st.warning("같은 이름의 그룹이 이미 있습니다.")
+                elif dup_name:
+                    st.warning("내가 속한 그룹 중 같은 이름의 그룹이 이미 있어요.")
+                elif dup_members:
+                    st.warning("같은 멤버 구성의 그룹이 이미 있어요.")
                 else:
-                    new_group = {"group_name": new_name, "members": [username] + add_members}
+                    new_group = {"group_name": new_name, "members": proposed_members}
                     groups["groups"].append(new_group)
                     save_json(GROUPS_FILE, groups)
                     st.success(f"그룹 '{new_name}'이(가) 생성되었습니다.")
@@ -201,11 +232,12 @@ else:
                 with col1:
                     st.markdown(f"**{g['group_name']}** - 멤버: {', '.join(g['members'])}")
                 with col2:
-                    # 멤버 추가
                     candidates = [u["username"] for u in accounts["users"]
                                   if u["username"] not in g["members"]]
                     add_user = st.selectbox(
-                        f"멤버 추가 ({g['group_name']})", ["선택 없음"] + candidates, key=f"add_{g['group_name']}"
+                        f"멤버 추가 ({g['group_name']})",
+                        ["선택 없음"] + candidates,
+                        key=f"add_{g['group_name']}"
                     )
                 with col3:
                     if st.button(f"멤버 추가", key=f"add_btn_{g['group_name']}"):
@@ -215,7 +247,6 @@ else:
                             st.success(f"{add_user} 님을 추가했습니다.")
                             st.rerun()
 
-                # 그룹 나가기
                 if st.button(f"그룹 나가기 ({g['group_name']})", key=f"leave_{g['group_name']}"):
                     g["members"].remove(username)
                     if len(g["members"]) == 0:
@@ -230,7 +261,6 @@ else:
     if menu == "달력":
         st.title("🗓 하루 추억 달력")
 
-        # 테마별 색상 스타일
         theme_colors = {
             "기본": "#f0f2f6",
             "다크": "#1e1e1e",
@@ -253,7 +283,6 @@ else:
             year = st.number_input("연도", 2000, 2100, datetime.now().year, step=1)
             month = st.number_input("월", 1, 12, datetime.now().month, step=1)
 
-            # 선택된 날짜 표시
             if st.session_state.selected_date:
                 st.info(f"선택된 날짜: **{st.session_state.selected_date}**")
                 if st.button("선택 해제"):
@@ -274,7 +303,6 @@ else:
                             st.session_state.selected_date = date_str
                             st.rerun()
 
-        # ------ 추억 작성/보기 ------
         if st.session_state.selected_date:
             st.markdown("---")
             st.subheader(f"📔 {st.session_state.selected_date} 의 추억")
