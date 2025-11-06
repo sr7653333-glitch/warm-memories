@@ -6,7 +6,7 @@ import hashlib
 from datetime import datetime
 import calendar
 import base64
-from streamlit.components.v1 import html as html_component  # 🔹 HTML 안전 렌더용
+from streamlit.components.v1 import html as html_component  # 캘린더 HTML 렌더
 
 # =========================
 # 기본 설정 & 폴더
@@ -38,7 +38,36 @@ def hash_pw(pw: str) -> str:
 def is_sha256_hex(s: str) -> bool:
     return isinstance(s, str) and len(s) == 64 and all(c in "0123456789abcdef" for c in s)
 
-# ▶ Python 3.13 호환: 업로더에서 이미지 MIME 추정
+def set_query_params(**kwargs):
+    # 최신/구버전 모두 대응
+    try:
+        st.query_params.update(kwargs)  # 최신
+        return
+    except Exception:
+        pass
+    try:
+        st.experimental_set_query_params(**kwargs)  # 구버전
+    except Exception:
+        pass
+
+def get_query_params():
+    try:
+        return dict(st.query_params)  # 최신
+    except Exception:
+        pass
+    try:
+        return st.experimental_get_query_params()  # 구버전
+    except Exception:
+        return {}
+
+def get_query_value(key, default=None):
+    qp = get_query_params()
+    if key in qp:
+        val = qp[key]
+        return val[0] if isinstance(val, list) else val
+    return default
+
+# ▶ 업로더에서 이미지 MIME 추정
 def guess_mime_from_uploaded(up):
     if getattr(up, "type", None) and up.type.startswith("image/"):
         return up.type
@@ -48,23 +77,6 @@ def guess_mime_from_uploaded(up):
     if ext == ".png":
         return "image/png"
     return "image/png"
-
-# ▶ 쿼리파라미터에서 날짜 읽기 (새 탭 열기 대응)
-def get_query_date():
-    try:
-        qp = st.query_params  # Streamlit 최신
-        if isinstance(qp, dict) and "date" in qp:
-            val = qp["date"]
-            return val[0] if isinstance(val, list) else val
-    except Exception:
-        pass
-    try:
-        qp = st.experimental_get_query_params()  # 구버전 호환
-        if "date" in qp and qp["date"]:
-            return qp["date"][0]
-    except Exception:
-        pass
-    return None
 
 # 파일 경로
 ACCOUNTS_FILE  = "accounts/accounts.json"
@@ -80,7 +92,7 @@ groups         = load_json(GROUPS_FILE, {"groups": []})
 diagnosis_data = load_json(DIAGNOSIS_FILE, {"records": []})
 questions_data = load_json(QUESTIONS_FILE, {"custom_questions": []})
 
-# 비밀번호 혼재 자동 정리
+# 비번 해시 마이그레이션
 changed = False
 for u in accounts["users"]:
     pw = u.get("password", "")
@@ -100,13 +112,12 @@ def load_mems(username: str):
 def save_mems(username: str, data):
     save_json(mem_path(username), data)
 
-# 달력 꾸미기 유틸
+# 꾸미기 유틸
 def deco_path(username: str) -> str:
     return f"{DECOS_DIR}/{username}.json"
 
 def load_decos(username: str):
     return load_json(deco_path(username), {"decos": {}})
-    # {"decos": {"YYYY-MM-DD": {"bg":"#ffe4ec", "stickers":["🌸"], "radius":"12px", "bg_img_b64":"data:image/..."} } }
 
 def save_decos(username: str, data):
     save_json(deco_path(username), data)
@@ -114,7 +125,7 @@ def save_decos(username: str, data):
 STICKER_PRESETS = ["🌸","🌼","🌟","💖","✨","🍀","🧸","🎀","📸","☕","🍰","🎈","📝","👣","🎵"]
 
 # =========================
-# 어르신 공통 기본 5문항
+# 기본 5문항
 # =========================
 def get_default_questions():
     return [
@@ -126,26 +137,16 @@ def get_default_questions():
     ]
 
 # =========================
-# 통증 부위 선택(이미지 없이)
+# 통증 부위 (이미지 없이)
 # =========================
-PAIN_REGIONS_FRONT = [
-    "머리/목", "어깨/가슴", "복부", "골반/허리",
-    "왼팔", "오른팔", "왼다리", "오른다리", "발/발목"
-]
-PAIN_REGIONS_BACK = [
-    "뒤-목/승모근", "등/견갑", "허리(후면)", "둔부",
-    "왼팔(후면)", "오른팔(후면)", "왼다리(후면)", "오른다리(후면)", "발뒤꿈치"
-]
+PAIN_REGIONS_FRONT = ["머리/목","어깨/가슴","복부","골반/허리","왼팔","오른팔","왼다리","오른다리","발/발목"]
+PAIN_REGIONS_BACK  = ["뒤-목/승모근","등/견갑","허리(후면)","둔부","왼팔(후면)","오른팔(후면)","왼다리(후면)","오른다리(후면)","발뒤꿈치"]
 
 def toggle_chip(label: str, key: str):
     if key not in st.session_state:
         st.session_state[key] = False
     active = st.session_state[key]
-    btn = st.button(
-        f"{'✅ ' if active else '⬜ '} {label}",
-        key=f"btn_{key}",
-        use_container_width=True
-    )
+    btn = st.button(f"{'✅ ' if active else '⬜ '} {label}", key=f"btn_{key}", use_container_width=True)
     if btn:
         st.session_state[key] = not active
         active = not active
@@ -170,7 +171,7 @@ def pain_selector_no_image(view_key: str = "앞"):
     return {"regions": selected, "points": []}
 
 # =========================
-# 인증 세션 기본값 / 복원
+# 세션 기본값 / 복원
 # =========================
 for key, default in [
     ("logged_in", False), ("username", ""), ("role", ""),
@@ -205,44 +206,16 @@ if not st.session_state.logged_in:
             elif any(u["username"] == in_username for u in accounts["users"]):
                 st.warning("이미 존재하는 아이디입니다.")
             else:
-                accounts["users"].append({
-                    "username": in_username,
-                    "password": hash_pw(password),
-                    "role": role
-                })
+                accounts["users"].append({"username": in_username, "password": hash_pw(password), "role": role})
                 save_json(ACCOUNTS_FILE, accounts)
                 st.success("가입 완료! 로그인해주세요.")
-    else:
-        username = st.text_input("아이디", key="login_id")
-        password = st.text_input("비밀번호", type="password", key="login_pw")
-        if st.button("로그인"):
-            in_username = username.strip()
-            in_hash = hash_pw(password)
-            user = next(
-                (u for u in accounts["users"]
-                 if u["username"] == in_username
-                 and (u["password"] == in_hash or u["password"] == password)),
-                None
-            )
-            if user:
-                st.session_state.logged_in = True
-                st.session_state.username = in_username
-                st.session_state.role = user["role"]
-                st.session_state.login_cookie = {"username": in_username, "role": user["role"]}
-                save_json(SESSION_FILE, st.session_state.login_cookie)
-                st.rerun()
-            else:
-                st.warning("아이디 또는 비밀번호가 올바르지 않습니다.")
-
-# =========================
-# 로그인 후 화면
-# =========================
 else:
     username = st.session_state.username
     role = st.session_state.role
 
-    # 🔹 새 탭으로 열렸을 때 ?date=... 반영
-    qdate = get_query_date()
+    # 쿼리 파라미터로 페이지/날짜 제어
+    page = get_query_value("page", "calendar")
+    qdate = get_query_value("date", None)
     if qdate:
         st.session_state.selected_date = qdate
 
@@ -258,7 +231,7 @@ else:
             os.remove(SESSION_FILE)
         st.rerun()
 
-    # 역할별 메뉴
+    # 메뉴
     menu_items = ["달력"]
     if role == "받는이":
         menu_items.append("자가진단")
@@ -274,18 +247,17 @@ else:
     st.markdown(f"<style>.stApp{{background-color:{theme_colors[st.session_state.theme]};}}</style>", unsafe_allow_html=True)
 
     # -----------------------------
-    # 달력 (+ 다꾸 꾸미기)
+    # 달력 (그리드 페이지)
     # -----------------------------
-    if menu == "달력":
+    if menu == "달력" and page == "calendar":
         st.title("🗓 하루 추억 달력")
 
-        decos = load_decos(username)  # {"decos": {date: {...}}}
-
+        decos = load_decos(username)  # 항상 최신 로드
         left, right = st.columns([1, 3])
         with left:
             st.markdown("#### 📅 달력 조정")
-            year = st.number_input("연도", 2000, 2100, datetime.now().year, step=1)
-            month = st.number_input("월", 1, 12, datetime.now().month, step=1)
+            year = st.number_input("연도", 2000, 2100, datetime.now().year, step=1, key="year_input")
+            month = st.number_input("월", 1, 12, datetime.now().month, step=1, key="month_input")
 
             decorate_mode = st.toggle("🎨 꾸미기 모드", value=False, help="날짜별 배경/스티커/이미지를 꾸며 저장해요.")
 
@@ -293,12 +265,14 @@ else:
                 st.info(f"선택된 날짜: **{st.session_state.selected_date}**")
                 if st.button("선택 해제"):
                     st.session_state.selected_date = None
+                    # 쿼리에서 date/page 제거
+                    set_query_params()
                     st.rerun()
 
         with right:
             st.markdown(f"### {int(year)}년 {int(month)}월")
 
-            # 🔹 HTML로 안전 렌더 (태그가 그대로 텍스트로 보이는 문제 해결)
+            # 클릭 가능한 달력(셀 전체가 링크)
             css = """
             <style>
             .cal-grid {
@@ -306,24 +280,21 @@ else:
                 grid-template-columns: repeat(7, 1fr);
                 gap: 8px;
             }
+            a.cal-link { text-decoration: none; color: inherit; display:block; }
             .cal-cell { 
                 padding: 8px; border: 1px solid rgba(0,0,0,0.08); min-height: 84px;
                 border-radius: 10px; position: relative; overflow: hidden;
                 display: flex; flex-direction: column; gap: 4px; 
-                background: white;
+                background: white; cursor: pointer;
+                transition: transform .05s ease-in-out;
             }
+            .cal-cell:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,.06); }
             .cal-day { font-weight: 700; }
             .cal-stickers { font-size: 20px; line-height: 1.1; }
             .cal-bg {
                 position: absolute; inset: 0; background-size: cover; background-position: center; opacity: 0.18;
             }
             .cal-content { position: relative; z-index: 2; }
-            .cal-open {
-                position: absolute; right: 8px; bottom: 8px; z-index: 3;
-                background: rgba(255,255,255,0.85); border: 1px solid #ddd; border-radius: 8px;
-                padding: 2px 8px; font-size: 12px; text-decoration: none; color: #333;
-            }
-            .cal-open:hover { background: white; }
             .cal-empty { min-height: 84px; }
             </style>
             """
@@ -346,25 +317,21 @@ else:
                     radius_style = f"border-radius:{radius};"
                     bg_img_div = f"<div class='cal-bg' style=\"background-image:url('{bg_img_b64}')\"></div>" if bg_img_b64 else ""
 
+                    # 셀 전체를 링크로 감싸서 같은 탭에서 상세 페이지로 이동
                     cell_html = f"""
-                    <div class="cal-cell" style="{bg_color_style}{radius_style}">
-                        {bg_img_div}
-                        <div class="cal-content">
-                            <div class="cal-day">{day}</div>
-                            <div class="cal-stickers">{' '.join(stickers)}</div>
+                    <a class="cal-link" href="?page=detail&date={date_str}#detail">
+                        <div class="cal-cell" style="{bg_color_style}{radius_style}">
+                            {bg_img_div}
+                            <div class="cal-content">
+                                <div class="cal-day">{day}</div>
+                                <div class="cal-stickers">{' '.join(stickers)}</div>
+                            </div>
                         </div>
-                        <a class="cal-open" href="?date={date_str}#detail" target="_blank">열기</a>
-                    </div>
+                    </a>
                     """
                     cells.append(cell_html)
 
-            grid_html = f"""
-            {css}
-            <div class="cal-grid">
-                {''.join(cells)}
-            </div>
-            """
-            # 최대 6주 × 셀 높이(120) 정도로 충분히 확보
+            grid_html = f"{css}<div class='cal-grid'>{''.join(cells)}</div>"
             html_component(grid_html, height=6*120, scrolling=True)
 
         # ------ 꾸미기 패널 ------
@@ -372,21 +339,19 @@ else:
             st.markdown("---")
             st.subheader("🎀 달력 꾸미기 (날짜별)")
             if not st.session_state.selected_date:
-                st.info("달력에서 **열기** 버튼으로 날짜를 먼저 선택하세요. (새 탭에서 열립니다)")
+                st.info("달력 셀을 클릭해서 날짜를 선택하세요. (같은 페이지에서 크게 열립니다)")
             else:
                 date_key = st.session_state.selected_date
-                dconf = load_decos(username)["decos"].get(date_key, {})
+                decos = load_decos(username)  # 최신
+                dconf = decos["decos"].get(date_key, {})
                 colA, colB = st.columns([2, 1])
 
                 with colA:
                     st.markdown(f"**꾸미는 날짜:** {date_key}")
-                    decos = load_decos(username)  # 최신 반영
-
                     bg = st.color_picker("배경색", value=dconf.get("bg", "#ffffff"))
-                    radius_choices = ["6px", "10px", "12px", "16px", "20px", "999px"]
+                    radius_choices = ["6px","10px","12px","16px","20px","999px"]
                     radius = st.selectbox("보더 라운드", radius_choices,
                                           index=radius_choices.index(dconf.get("radius","10px")))
-
                     st.markdown("**스티커(이모지)**")
                     picked = st.multiselect("스티커 선택(여러 개 가능)", STICKER_PRESETS, default=dconf.get("stickers", []))
                     extra = st.text_input("직접 입력(이모지/텍스트 추가)", value="")
@@ -414,7 +379,8 @@ else:
                                 "bg_img_b64": bg_img_b64
                             }
                             save_decos(username, decos)
-                            st.success("저장되었습니다!")
+                            # 저장 직후에도 즉시 반영되도록 상태 유지 + 리렌더
+                            st.success("저장되었습니다! 달력/상세에 바로 적용돼요.")
                             st.rerun()
                     with c2:
                         if st.button("🧼 배경 이미지 제거"):
@@ -433,15 +399,13 @@ else:
 
                 with colB:
                     st.markdown("**미리보기**")
-                    preview_bg = bg
-                    preview_radius = radius
                     prev_html = f"""
                     <style>
                     .cal-cell-preview {{
                         padding: 8px; border: 1px solid rgba(0,0,0,0.08); min-height: 160px;
                         position: relative; overflow: hidden;
                         display: flex; flex-direction: column; gap: 4px;
-                        background: {preview_bg}; border-radius: {preview_radius};
+                        background: {bg}; border-radius: {radius};
                     }}
                     </style>
                     <div class="cal-cell-preview">
@@ -451,37 +415,83 @@ else:
                     """
                     st.markdown(prev_html, unsafe_allow_html=True)
 
-        # ------ 상세 앵커 (새 탭에서 바로 점프)
+    # -----------------------------
+    # 달력 (상세 페이지: 날짜만 크게)
+    # -----------------------------
+    if menu == "달력" and page == "detail":
+        date_key = st.session_state.selected_date or datetime.now().strftime("%Y-%m-%d")
+        decos = load_decos(username)
+        dconf = decos["decos"].get(date_key, {})
+        bg = dconf.get("bg", "#ffffff")
+        radius = dconf.get("radius", "16px")
+        stickers = dconf.get("stickers", [])
+        bg_img_b64 = dconf.get("bg_img_b64", None)
+
+        # 상단 액션
+        cols = st.columns([1, 3, 1])
+        with cols[0]:
+            if st.button("◀ 달력으로", use_container_width=True):
+                # calendar 페이지로 되돌림
+                set_query_params(page="calendar")
+                st.rerun()
+        with cols[1]:
+            st.title(f"📅 {date_key}")
+        with cols[2]:
+            pass
+
+        # 꾸밈 적용된 큰 카드
+        bg_img_div = f"<div class='cal-bg' style=\"background-image:url('{bg_img_b64}')\"></div>" if bg_img_b64 else ""
+        big_html = f"""
+        <style>
+        .detail-card {{
+            position: relative; overflow: hidden;
+            border: 1px solid rgba(0,0,0,0.08);
+            border-radius: {radius};
+            min-height: 200px; background: {bg};
+            padding: 16px; margin-bottom: 12px;
+        }}
+        .cal-bg {{ position: absolute; inset: 0; background-size: cover; background-position: center; opacity: 0.18; }}
+        .detail-content {{ position: relative; z-index: 2; }}
+        .detail-day {{ font-size: 28px; font-weight: 800; }}
+        .detail-stickers {{ font-size: 28px; line-height: 1.1; margin-top: 6px; }}
+        </style>
+        <div class="detail-card">
+            {bg_img_div}
+            <div class="detail-content">
+                <div class="detail-day">{date_key}</div>
+                <div class="detail-stickers">{' '.join(stickers)}</div>
+            </div>
+        </div>
+        """
+        st.markdown(big_html, unsafe_allow_html=True)
         st.markdown('<a id="detail"></a>', unsafe_allow_html=True)
 
-        # ------ 선택된 날짜의 '추억' 작성 UI ------
-        if st.session_state.selected_date:
-            st.markdown("---")
-            st.subheader(f"📔 {st.session_state.selected_date} 의 추억")
-            mems = load_mems(username)
-            todays = mems["memories"].get(st.session_state.selected_date, [])
-            if todays:
-                for entry in todays:
-                    st.markdown(f"- **{entry['title']}** — {entry['text']}")
-            else:
-                st.info("아직 기록이 없어요. 아래에 첫 추억을 남겨보세요!")
-            with st.form("add_memory_form", clear_on_submit=True):
-                title = st.text_input("제목")
-                text = st.text_area("내용", height=100)
-                submitted = st.form_submit_button("추억 저장")
-                if submitted:
-                    if not title or not text:
-                        st.warning("제목과 내용을 입력해주세요.")
-                    else:
-                        new_list = mems["memories"].get(st.session_state.selected_date, [])
-                        new_list.append({"title": title, "text": text, "ts": datetime.now().isoformat(timespec="seconds")})
-                        mems["memories"][st.session_state.selected_date] = new_list
-                        save_mems(username, mems)
-                        st.success("추억이 저장되었습니다!")
-                        st.rerun()
+        # 추억 리스트 + 작성
+        mems = load_mems(username)
+        todays = mems["memories"].get(date_key, [])
+        st.subheader("📔 추억")
+        if todays:
+            for entry in todays:
+                st.markdown(f"- **{entry['title']}** — {entry['text']}")
+        else:
+            st.info("아직 기록이 없어요. 아래에 첫 추억을 남겨보세요!")
+        with st.form("add_memory_form_detail", clear_on_submit=True):
+            title = st.text_input("제목")
+            text = st.text_area("내용", height=120)
+            submitted = st.form_submit_button("추억 저장")
+            if submitted:
+                if not title or not text:
+                    st.warning("제목과 내용을 입력해주세요.")
+                else:
+                    new_list = mems["memories"].get(date_key, [])
+                    new_list.append({"title": title, "text": text, "ts": datetime.now().isoformat(timespec="seconds")})
+                    mems["memories"][date_key] = new_list
+                    save_mems(username, mems)
+                    st.success("추억이 저장되었습니다!")
+                    st.rerun()
 
     # -----------------------------
-    # 자가진단 (받는이만)
+    # 자가진단 (받는이)
     # -----------------------------
     if menu == "자가진단" and role == "받는이":
         st.title("📝 오늘의 자가진단")
@@ -491,7 +501,6 @@ else:
         with st.expander("어르신 건강 기본 질문 5가지", expanded=not already_done):
             dq = get_default_questions()
             answers = {}
-
             for q in dq:
                 if q["type"] == "scale":
                     answers[q["id"]] = st.slider(q["label"], q["min"], q["max"], q["default"])
@@ -512,8 +521,7 @@ else:
                         custom_answers[cq["id"]] = st.radio(q_label, ["예", "아니오"], horizontal=True, key=f"c_yesno_{i}")
                     elif qtype == "choice":
                         opts = cq.get("opts", ["아니오","예"])
-                        idx = int(cq.get("default_index", 0))
-                        idx = max(0, min(idx, len(opts)-1))
+                        idx = int(cq.get("default_index", 0)); idx = max(0, min(idx, len(opts)-1))
                         custom_answers[cq["id"]] = st.selectbox(q_label, opts, index=idx, key=f"c_choice_{i}")
                     else:
                         custom_answers[cq["id"]] = st.text_input(q_label, key=f"c_text_{i}")
@@ -546,11 +554,10 @@ else:
                 st.rerun()
 
     # -----------------------------
-    # 자가진단 모니터링 (보낸이만)
+    # 자가진단 모니터링 (보낸이)
     # -----------------------------
     if menu == "자가진단 모니터링" and role == "보낸이":
         st.title("👀 받는이 자가진단 모니터링")
-
         my_groups = [g for g in groups["groups"] if username in g["members"]]
         receivers = sorted({m for g in my_groups for m in g["members"] if m != username})
 
@@ -567,10 +574,9 @@ else:
 
             st.markdown("---")
             st.subheader("🛠 맞춤 질문 만들기 & 배포")
-
             with st.form("custom_q_form"):
                 q_text = st.text_input("질문 내용 (예: '물을 충분히 드셨나요?')")
-                q_type = st.selectbox("질문 유형", ["yesno", "scale", "choice", "text"], index=0)
+                q_type = st.selectbox("질문 유형", ["yesno","scale","choice","text"], index=0)
                 colA, colB, colC = st.columns(3)
                 with colA:
                     minv = st.number_input("scale 최소값", value=1, step=1)
@@ -578,10 +584,8 @@ else:
                     maxv = st.number_input("scale 최대값", value=5, step=1)
                 with colC:
                     default_scale = st.number_input("scale 기본값", value=3, step=1)
-
                 choice_opts = st.text_input("choice 옵션(쉼표로 구분)", value="아니오,예")
                 default_idx = st.number_input("choice 기본 인덱스", value=0, step=1)
-
                 targets = st.multiselect("질문을 받을 받는이(복수 선택)", receivers)
 
                 submitted = st.form_submit_button("질문 생성")
@@ -592,19 +596,11 @@ else:
                         st.warning("타겟 받는이를 선택하세요.")
                     else:
                         q_id = f"cq_{int(datetime.now().timestamp())}"
-                        item = {
-                            "id": q_id,
-                            "creator": username,
-                            "targets": targets,
-                            "text": q_text.strip(),
-                            "type": q_type
-                        }
+                        item = {"id": q_id, "creator": username, "targets": targets, "text": q_text.strip(), "type": q_type}
                         if q_type == "scale":
                             item.update({"min": int(minv), "max": int(maxv), "default": int(default_scale)})
                         elif q_type == "choice":
-                            opts = [o.strip() for o in choice_opts.split(",") if o.strip()]
-                            if not opts:
-                                opts = ["아니오","예"]
+                            opts = [o.strip() for o in choice_opts.split(",") if o.strip()] or ["아니오","예"]
                             item.update({"opts": opts, "default_index": int(default_idx)})
                         questions_data.setdefault("custom_questions", []).append(item)
                         save_json(QUESTIONS_FILE, questions_data)
@@ -621,7 +617,7 @@ else:
             st.warning("아직 연결된 받는이가 없습니다. ‘그룹 편집’에서 그룹을 만들어보세요.")
 
     # -----------------------------
-    # 그룹 편집 (양쪽 공용)
+    # 그룹 편집
     # -----------------------------
     if menu == "그룹 편집":
         st.title("✏️ 그룹 편집")
@@ -669,6 +665,13 @@ else:
                 if st.button(f"그룹 나가기 ({g['group_name']})", key=f"leave_{g['group_name']}"):
                     g["members"].remove(username)
                     if len(g["members"]) == 0:
+                        groups["groups"].remove(g)
+                    save_json(GROUPS_FILE, groups)
+                    st.success(f"'{g['group_name']}' 그룹에서 나갔습니다.")
+                    st.rerun()
+        else:
+            st.info("아직 속한 그룹이 없습니다. 위에서 새 그룹을 만들어보세요.")
+
                         groups["groups"].remove(g)
                     save_json(GROUPS_FILE, groups)
                     st.success(f"'{g['group_name']}' 그룹에서 나갔습니다.")
