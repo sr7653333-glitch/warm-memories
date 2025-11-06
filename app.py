@@ -6,6 +6,7 @@ import hashlib
 from datetime import datetime
 import calendar
 import base64
+from streamlit.components.v1 import html as html_component  # 🔹 HTML 안전 렌더용
 
 # =========================
 # 기본 설정 & 폴더
@@ -37,24 +38,40 @@ def hash_pw(pw: str) -> str:
 def is_sha256_hex(s: str) -> bool:
     return isinstance(s, str) and len(s) == 64 and all(c in "0123456789abcdef" for c in s)
 
-# ▶ Python 3.13 호환: 업로더에서 이미지 MIME 추정 (imghdr 대체)
+# ▶ Python 3.13 호환: 업로더에서 이미지 MIME 추정
 def guess_mime_from_uploaded(up):
-    """st.file_uploader 반환값으로 안전하게 MIME 추정"""
     if getattr(up, "type", None) and up.type.startswith("image/"):
-        return up.type  # 예: "image/png", "image/jpeg"
+        return up.type
     ext = os.path.splitext(getattr(up, "name", ""))[1].lower()
     if ext in [".jpg", ".jpeg"]:
         return "image/jpeg"
     if ext == ".png":
         return "image/png"
-    return "image/png"  # 기본값
+    return "image/png"
+
+# ▶ 쿼리파라미터에서 날짜 읽기 (새 탭 열기 대응)
+def get_query_date():
+    try:
+        qp = st.query_params  # Streamlit 최신
+        if isinstance(qp, dict) and "date" in qp:
+            val = qp["date"]
+            return val[0] if isinstance(val, list) else val
+    except Exception:
+        pass
+    try:
+        qp = st.experimental_get_query_params()  # 구버전 호환
+        if "date" in qp and qp["date"]:
+            return qp["date"][0]
+    except Exception:
+        pass
+    return None
 
 # 파일 경로
 ACCOUNTS_FILE  = "accounts/accounts.json"
 GROUPS_FILE    = "accounts/groups.json"
 SESSION_FILE   = "accounts/sessions.json"
 DIAGNOSIS_FILE = "accounts/diagnosis.json"
-QUESTIONS_FILE = "accounts/questions.json"   # 보낸이 맞춤 질문 저장
+QUESTIONS_FILE = "accounts/questions.json"
 DECOS_DIR      = "accounts/decos"
 
 # 데이터 로드
@@ -73,7 +90,7 @@ for u in accounts["users"]:
 if changed:
     save_json(ACCOUNTS_FILE, accounts)
 
-# 메모 파일 유틸
+# 메모 유틸
 def mem_path(username: str) -> str:
     return f"accounts/memories/{username}.json"
 
@@ -83,13 +100,13 @@ def load_mems(username: str):
 def save_mems(username: str, data):
     save_json(mem_path(username), data)
 
-# --- 달력 꾸미기 저장 유틸 ---
+# 달력 꾸미기 유틸
 def deco_path(username: str) -> str:
     return f"{DECOS_DIR}/{username}.json"
 
 def load_decos(username: str):
     return load_json(deco_path(username), {"decos": {}})
-    # 구조: {"decos": { "YYYY-MM-DD": {"bg": "#ffe4ec", "stickers": ["🌸","✨"], "radius":"12px", "bg_img_b64": "data:image/png;base64,..." } } }
+    # {"decos": {"YYYY-MM-DD": {"bg":"#ffe4ec", "stickers":["🌸"], "radius":"12px", "bg_img_b64":"data:image/..."} } }
 
 def save_decos(username: str, data):
     save_json(deco_path(username), data)
@@ -109,7 +126,7 @@ def get_default_questions():
     ]
 
 # =========================
-# 이미지 없이 통증 부위 선택 (토글 칩)
+# 통증 부위 선택(이미지 없이)
 # =========================
 PAIN_REGIONS_FRONT = [
     "머리/목", "어깨/가슴", "복부", "골반/허리",
@@ -138,7 +155,6 @@ def pain_selector_no_image(view_key: str = "앞"):
     st.markdown("#### 🧍 아픈 부위를 선택해주세요")
     st.caption("여러 부위를 함께 선택할 수 있어요. 한 번 더 누르면 해제됩니다.")
     regions = PAIN_REGIONS_FRONT if view_key == "앞" else PAIN_REGIONS_BACK
-
     selected = []
     for i in range(0, len(regions), 3):
         cols = st.columns(3)
@@ -225,6 +241,11 @@ else:
     username = st.session_state.username
     role = st.session_state.role
 
+    # 🔹 새 탭으로 열렸을 때 ?date=... 반영
+    qdate = get_query_date()
+    if qdate:
+        st.session_state.selected_date = qdate
+
     # 사이드바
     st.sidebar.markdown(f"**{username}님 ({role})**")
     if st.sidebar.button("로그아웃"):
@@ -237,7 +258,7 @@ else:
             os.remove(SESSION_FILE)
         st.rerun()
 
-    # ✅ 역할별 메뉴 (받는이만 자가진단, 보낸이는 모니터링)
+    # 역할별 메뉴
     menu_items = ["달력"]
     if role == "받는이":
         menu_items.append("자가진단")
@@ -276,13 +297,20 @@ else:
 
         with right:
             st.markdown(f"### {int(year)}년 {int(month)}월")
-            # 달력 HTML 스타일
-            st.markdown("""
+
+            # 🔹 HTML로 안전 렌더 (태그가 그대로 텍스트로 보이는 문제 해결)
+            css = """
             <style>
+            .cal-grid {
+                display: grid;
+                grid-template-columns: repeat(7, 1fr);
+                gap: 8px;
+            }
             .cal-cell { 
                 padding: 8px; border: 1px solid rgba(0,0,0,0.08); min-height: 84px;
                 border-radius: 10px; position: relative; overflow: hidden;
                 display: flex; flex-direction: column; gap: 4px; 
+                background: white;
             }
             .cal-day { font-weight: 700; }
             .cal-stickers { font-size: 20px; line-height: 1.1; }
@@ -290,60 +318,74 @@ else:
                 position: absolute; inset: 0; background-size: cover; background-position: center; opacity: 0.18;
             }
             .cal-content { position: relative; z-index: 2; }
+            .cal-open {
+                position: absolute; right: 8px; bottom: 8px; z-index: 3;
+                background: rgba(255,255,255,0.85); border: 1px solid #ddd; border-radius: 8px;
+                padding: 2px 8px; font-size: 12px; text-decoration: none; color: #333;
+            }
+            .cal-open:hover { background: white; }
+            .cal-empty { min-height: 84px; }
             </style>
-            """, unsafe_allow_html=True)
+            """
 
-            cal = calendar.monthcalendar(int(year), int(month))
-            for week in cal:
-                cols = st.columns(7)
-                for i, day in enumerate(week):
-                    with cols[i]:
-                        if day == 0:
-                            st.write(" ")
-                            continue
+            cal_mat = calendar.monthcalendar(int(year), int(month))
+            cells = []
+            for week in cal_mat:
+                for day in week:
+                    if day == 0:
+                        cells.append('<div class="cal-empty"></div>')
+                        continue
+                    date_str = f"{int(year)}-{int(month):02d}-{day:02d}"
+                    dconf = decos["decos"].get(date_str, {})
+                    bg = dconf.get("bg", None)
+                    radius = dconf.get("radius", "10px")
+                    stickers = dconf.get("stickers", [])
+                    bg_img_b64 = dconf.get("bg_img_b64", None)
 
-                        date_str = f"{int(year)}-{int(month):02d}-{day:02d}"
-                        dconf = decos["decos"].get(date_str, {})
-                        bg = dconf.get("bg", None)
-                        radius = dconf.get("radius", "10px")
-                        stickers = dconf.get("stickers", [])
-                        bg_img_b64 = dconf.get("bg_img_b64", None)
+                    bg_color_style = f"background:{bg};" if bg else ""
+                    radius_style = f"border-radius:{radius};"
+                    bg_img_div = f"<div class='cal-bg' style=\"background-image:url('{bg_img_b64}')\"></div>" if bg_img_b64 else ""
 
-                        bg_color_style = f"background:{bg};" if bg else ""
-                        radius_style = f"border-radius:{radius};"
-                        bg_img_div = f"<div class='cal-bg' style=\"background-image:url('{bg_img_b64}')\"></div>" if bg_img_b64 else ""
-
-                        html = f"""
-                        <div class="cal-cell" style="{bg_color_style}{radius_style}">
-                            {bg_img_div}
-                            <div class="cal-content">
-                                <div class="cal-day">{day}</div>
-                                <div class="cal-stickers">{' '.join(stickers)}</div>
-                            </div>
+                    cell_html = f"""
+                    <div class="cal-cell" style="{bg_color_style}{radius_style}">
+                        {bg_img_div}
+                        <div class="cal-content">
+                            <div class="cal-day">{day}</div>
+                            <div class="cal-stickers">{' '.join(stickers)}</div>
                         </div>
-                        """
-                        st.markdown(html, unsafe_allow_html=True)
+                        <a class="cal-open" href="?date={date_str}#detail" target="_blank">열기</a>
+                    </div>
+                    """
+                    cells.append(cell_html)
 
-                        if st.button("열기", key=f"open_{date_str}"):
-                            st.session_state.selected_date = date_str
-                            st.rerun()
+            grid_html = f"""
+            {css}
+            <div class="cal-grid">
+                {''.join(cells)}
+            </div>
+            """
+            # 최대 6주 × 셀 높이(120) 정도로 충분히 확보
+            html_component(grid_html, height=6*120, scrolling=True)
 
         # ------ 꾸미기 패널 ------
         if decorate_mode:
             st.markdown("---")
             st.subheader("🎀 달력 꾸미기 (날짜별)")
             if not st.session_state.selected_date:
-                st.info("달력에서 **열기** 버튼으로 날짜를 먼저 선택하세요.")
+                st.info("달력에서 **열기** 버튼으로 날짜를 먼저 선택하세요. (새 탭에서 열립니다)")
             else:
                 date_key = st.session_state.selected_date
-                dconf = decos["decos"].get(date_key, {})
+                dconf = load_decos(username)["decos"].get(date_key, {})
                 colA, colB = st.columns([2, 1])
 
                 with colA:
                     st.markdown(f"**꾸미는 날짜:** {date_key}")
+                    decos = load_decos(username)  # 최신 반영
+
                     bg = st.color_picker("배경색", value=dconf.get("bg", "#ffffff"))
-                    radius = st.selectbox("보더 라운드", ["6px", "10px", "12px", "16px", "20px", "999px"],
-                                          index=["6px","10px","12px","16px","20px","999px"].index(dconf.get("radius","10px")))
+                    radius_choices = ["6px", "10px", "12px", "16px", "20px", "999px"]
+                    radius = st.selectbox("보더 라운드", radius_choices,
+                                          index=radius_choices.index(dconf.get("radius","10px")))
 
                     st.markdown("**스티커(이모지)**")
                     picked = st.multiselect("스티커 선택(여러 개 가능)", STICKER_PRESETS, default=dconf.get("stickers", []))
@@ -357,7 +399,7 @@ else:
                     bg_img_b64 = dconf.get("bg_img_b64", None)
                     if up is not None:
                         raw = up.read()
-                        mime = guess_mime_from_uploaded(up)  # ← imghdr 없이 MIME 추정
+                        mime = guess_mime_from_uploaded(up)
                         b64 = base64.b64encode(raw).decode("utf-8")
                         bg_img_b64 = f"data:{mime};base64,{b64}"
                         st.success("배경 이미지가 임시로 적용되었습니다. 저장을 눌러 반영하세요.")
@@ -394,14 +436,23 @@ else:
                     preview_bg = bg
                     preview_radius = radius
                     prev_html = f"""
-                    <div class="cal-cell" style="height:160px;background:{preview_bg};border-radius:{preview_radius};">
-                        <div class="cal-content">
-                            <div class="cal-day" style="font-size:22px;">{date_key[-2:]}</div>
-                            <div class="cal-stickers" style="font-size:28px;">{' '.join(picked)}</div>
-                        </div>
+                    <style>
+                    .cal-cell-preview {{
+                        padding: 8px; border: 1px solid rgba(0,0,0,0.08); min-height: 160px;
+                        position: relative; overflow: hidden;
+                        display: flex; flex-direction: column; gap: 4px;
+                        background: {preview_bg}; border-radius: {preview_radius};
+                    }}
+                    </style>
+                    <div class="cal-cell-preview">
+                        <div class="cal-day" style="font-size:22px; font-weight:700;">{date_key[-2:]}</div>
+                        <div class="cal-stickers" style="font-size:28px; line-height:1.1;">{' '.join(picked)}</div>
                     </div>
                     """
                     st.markdown(prev_html, unsafe_allow_html=True)
+
+        # ------ 상세 앵커 (새 탭에서 바로 점프)
+        st.markdown('<a id="detail"></a>', unsafe_allow_html=True)
 
         # ------ 선택된 날짜의 '추억' 작성 UI ------
         if st.session_state.selected_date:
@@ -496,7 +547,6 @@ else:
 
     # -----------------------------
     # 자가진단 모니터링 (보낸이만)
-    # + 맞춤 질문 만들기/배포
     # -----------------------------
     if menu == "자가진단 모니터링" and role == "보낸이":
         st.title("👀 받는이 자가진단 모니터링")
@@ -625,5 +675,6 @@ else:
                     st.rerun()
         else:
             st.info("아직 속한 그룹이 없습니다. 위에서 새 그룹을 만들어보세요.")
+
 
 
