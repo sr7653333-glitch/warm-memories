@@ -5,16 +5,13 @@ import json
 import hashlib
 from datetime import datetime
 import calendar
-from PIL import Image
-from streamlit_drawable_canvas import st_canvas
 
 # =========================
-# 기본 설정 & 폴더 준비
+# 기본 설정 & 폴더
 # =========================
 st.set_page_config(page_title="하루 추억 캘린더", layout="wide")
 os.makedirs("accounts", exist_ok=True)
 os.makedirs("accounts/memories", exist_ok=True)
-os.makedirs("assets", exist_ok=True)
 
 # =========================
 # 공통 유틸
@@ -43,14 +40,14 @@ ACCOUNTS_FILE  = "accounts/accounts.json"
 GROUPS_FILE    = "accounts/groups.json"
 SESSION_FILE   = "accounts/sessions.json"
 DIAGNOSIS_FILE = "accounts/diagnosis.json"
-QUESTIONS_FILE = "accounts/questions.json"   # 보낸이 맞춤 질문
-# 구조 예시: {"custom_questions":[{"id":"q_...","creator":"보낸이ID","targets":["받는이ID1"],"text":"물은 6컵?","type":"yesno","opts":[]}]}
+QUESTIONS_FILE = "accounts/questions.json"   # 보낸이 맞춤 질문 저장
 
 # 데이터 로드
 accounts       = load_json(ACCOUNTS_FILE, {"users": []})
 groups         = load_json(GROUPS_FILE, {"groups": []})
 diagnosis_data = load_json(DIAGNOSIS_FILE, {"records": []})
 questions_data = load_json(QUESTIONS_FILE, {"custom_questions": []})
+# custom_questions: [{ "id": "cq_...", "creator": "sender", "targets": ["rec1"], "text":"물을 6컵?", "type":"yesno"/"scale"/"choice"/"text", ... }]
 
 # 비밀번호 혼재 자동 정리
 changed = False
@@ -85,78 +82,54 @@ def get_default_questions():
     ]
 
 # =========================
-# 전신 통증 선택 위젯
+# 이미지 없이 통증 부위 선택 (토글 칩)
 # =========================
-def pain_selector(image_path: str, key: str = "painmap"):
-    """
-    전신 이미지 위 클릭 → 통증 좌표 + 대략 부위 라벨 반환
-    이미지 해상도에 맞게 regions 히트박스 좌표를 조정 가능.
-    """
-    if not os.path.exists(image_path):
-        st.warning(f"전신 이미지가 없어요: {image_path} (assets/body_front.png, assets/body_back.png 준비)")
-        return {"points": [], "regions": []}
+PAIN_REGIONS_FRONT = [
+    "머리/목", "어깨/가슴", "복부", "골반/허리",
+    "왼팔", "오른팔", "왼다리", "오른다리", "발/발목"
+]
+PAIN_REGIONS_BACK = [
+    "뒤-목/승모근", "등/견갑", "허리(후면)", "둔부",
+    "왼팔(후면)", "오른팔(후면)", "왼다리(후면)", "오른다리(후면)", "발뒤꿈치"
+]
 
-    st.markdown("#### 🧍 아픈 부위를 클릭해주세요")
-    img = Image.open(image_path)
-    cw, ch = img.size
-
-    canvas = st_canvas(
-        stroke_width=3,
-        stroke_color="#ff0000",
-        background_image=img,
-        update_streamlit=True,
-        height=ch,
-        width=cw,
-        drawing_mode="point",
-        point_display_radius=10,  # 어르신용 크게
-        key=key,
+def toggle_chip(label: str, key: str):
+    # 버튼형 토글(선택/해제)
+    if key not in st.session_state:
+        st.session_state[key] = False
+    active = st.session_state[key]
+    btn = st.button(
+        f"{'✅ ' if active else '⬜ '} {label}",
+        key=f"btn_{key}",
+        use_container_width=True
     )
+    if btn:
+        st.session_state[key] = not active
+        active = not active
+    return active
 
-    # 간단한 히트박스 (600x1200 근방 기준 예시)
-    regions = [
-        (250,  60, 350, 160, "머리/목"),
-        (220, 160, 380, 300, "어깨/가슴"),
-        (220, 300, 380, 420, "복부"),
-        (230, 420, 370, 520, "골반/허리"),
-        (120, 190, 220, 420, "왼팔"),
-        (380, 190, 480, 420, "오른팔"),
-        (200, 520, 280, 900, "왼다리"),
-        (320, 520, 400, 900, "오른다리"),
-        (260, 900, 340, 1150, "발/발목"),
-    ]
+def pain_selector_no_image(view_key: str = "앞"):
+    st.markdown("#### 🧍 아픈 부위를 선택해주세요")
+    st.caption("여러 부위를 함께 선택할 수 있어요. 한 번 더 누르면 해제됩니다.")
+    regions = PAIN_REGIONS_FRONT if view_key == "앞" else PAIN_REGIONS_BACK
 
-    def match_region(x, y):
-        for (x1, y1, x2, y2, label) in regions:
-            if x1 <= x <= x2 and y1 <= y <= y2:
-                return label
-        return "기타"
-
-    points, labels = [], []
-    if canvas and canvas.json_data is not None:
-        for obj in canvas.json_data.get("objects", []):
-            if obj.get("type") == "circle":
-                x = obj["left"] + obj.get("radius", 0)
-                y = obj["top"] + obj.get("radius", 0)
-                points.append((int(x), int(y)))
-                labels.append(match_region(x, y))
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("마지막 점 지우기", key=f"{key}_undo") and (points or labels):
-            st.session_state[key] = None
-            st.rerun()
-    with col2:
-        if st.button("모두 지우기", key=f"{key}_clear") and (points or labels):
-            st.session_state[key] = None
-            st.rerun()
-
-    if labels:
-        st.success(f"선택된 부위: {', '.join(labels)}")
-
-    return {"points": points, "regions": labels}
+    selected = []
+    # 3열 그리드로 큼직하게
+    for i in range(0, len(regions), 3):
+        cols = st.columns(3)
+        for j in range(3):
+            if i + j < len(regions):
+                label = regions[i + j]
+                key = f"pain_{view_key}_{label}"
+                with cols[j]:
+                    if toggle_chip(label, key):
+                        selected.append(label)
+    if selected:
+        st.success("선택된 부위: " + ", ".join(selected))
+    return {"regions": selected, "points": []}  # points는 좌표 대신 빈값
 
 # =========================
-# 인증 세션 기본값
+# 인증 세션 기본값 / 복원
 # =========================
 for key, default in [
     ("logged_in", False), ("username", ""), ("role", ""),
@@ -165,7 +138,6 @@ for key, default in [
     if key not in st.session_state:
         st.session_state[key] = default
 
-# 세션 복원
 if not st.session_state.logged_in and os.path.exists(SESSION_FILE):
     session = load_json(SESSION_FILE, {})
     if session:
@@ -228,7 +200,7 @@ else:
     username = st.session_state.username
     role = st.session_state.role
 
-    # 사이드바 공통
+    # 사이드바
     st.sidebar.markdown(f"**{username}님 ({role})**")
     if st.sidebar.button("로그아웃"):
         st.session_state.logged_in = False
@@ -240,7 +212,7 @@ else:
             os.remove(SESSION_FILE)
         st.rerun()
 
-    # 메뉴: 달력(최상위) → 자가진단 → 모니터링(보낸이만) → 그룹 편집
+    # 메뉴: 달력(최상위) → 자가진단 → (보낸이 전용) 모니터링 → 그룹 편집
     menu_items = ["달력", "자가진단"]
     if role == "보낸이":
         menu_items.append("자가진단 모니터링")
@@ -349,11 +321,10 @@ else:
             else:
                 st.info("받는이에게 배포된 맞춤 질문이 없습니다.")
 
-            # 통증 부위 선택 (앞/뒤)
+            # 통증 부위 선택 (이미지 없이 버튼 토글)
             st.markdown("### 🧍 통증 위치 표시")
             view = st.radio("신체 방향", ["앞", "뒤"], horizontal=True)
-            img_path = "assets/body_front.png" if view == "앞" else "assets/body_back.png"
-            pain = pain_selector(img_path, key=f"pain_{view}")
+            pain = pain_selector_no_image(view)
 
             memo = st.text_area("기록하고 싶은 메모가 있으면 남겨주세요.", "")
 
@@ -367,7 +338,7 @@ else:
                         **answers,
                         **{f"custom:{k}": v for k, v in custom_answers.items()},
                         "pain_regions": pain["regions"],
-                        "pain_points": pain["points"],
+                        "pain_points": pain["points"],  # 좌표는 없음(빈 리스트)
                     },
                     "memo": memo
                 }
