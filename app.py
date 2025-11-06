@@ -116,7 +116,7 @@ else:
             os.remove(SESSION_FILE)
         st.rerun()
 
-    menu = st.sidebar.radio("메뉴", ["그룹 관리", "그룹 편집", "달력"], index=2)
+    menu = st.sidebar.radio("메뉴", ["자가진단", "그룹 편집", "달력"], index=2)
 
     # ---------- 테마 선택 ----------
     st.sidebar.markdown("### 🎨 달력 테마")
