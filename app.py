@@ -148,96 +148,96 @@ else:
     if sel_menu == "달력":
         st.title("🗓 하루 추억 달력")
 
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            year = st.number_input("연도", 2000, 2100, datetime.now().year)
-            month = st.number_input("월", 1, 12, datetime.now().month)
-            decorate_mode = st.checkbox("🎀 꾸미기 모드")
+       with right:
+    st.markdown(
+        """
+        <style>
+        .cal-cell {
+            border:1px solid rgba(0,0,0,.1);
+            border-radius:10px;
+            min-height:92px;
+            padding:8px;
+            background:#fff;
+        }
+        .cal-day { font-weight:800; margin-bottom:6px; }
+        .cal-stickers { font-size:20px; line-height:1.1; }
+        .cal-empty { min-height:92px; }
+        /* 버튼 평면화 */
+        .cal-btn > button {
+            width: 100%;
+            height: 64px;
+            border-radius: 8px;
+            background: transparent;
+            border: 1px dashed rgba(0,0,0,.15);
+        }
+        .cal-btn > button:hover { border-color: rgba(0,0,0,.35); }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
-        with col2:
-            st.subheader(f"{int(year)}년 {int(month)}월")
+    st.subheader(f"{int(year)}년 {int(month)}월")
+    cal = calendar.monthcalendar(int(year), int(month))
+    decos = load_decos(username)
 
-            cal = calendar.monthcalendar(int(year), int(month))
-            decos = load_decos(username)
+    # 주 단위로 7열 그리드
+    for week in cal:
+        cols = st.columns(7)
+        for i, day in enumerate(week):
+            with cols[i]:
+                if day == 0:
+                    st.markdown("<div class='cal-empty'></div>", unsafe_allow_html=True)
+                    continue
 
-            # ✅ CSS + HTML
-            html_code = """
-            <style>
-                .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
-                .cal-cell {
-                    border:1px solid #ccc;
-                    border-radius:10px;
-                    background:white;
-                    padding:10px;
-                    cursor:pointer;
-                    min-height:80px;
-                    position:relative;
-                }
-                .cal-cell:hover { background:#ffe8f3; }
-                .cal-day { font-weight:700; }
-                .cal-stickers { font-size:20px; margin-top:5px; }
-            </style>
-            <div class='cal-grid'>
-            """
+                date_str = f"{int(year)}-{int(month):02d}-{day:02d}"
+                dconf = decos["decos"].get(date_str, {})
+                bg = dconf.get("bg", "#ffffff")
+                stickers = " ".join(dconf.get("stickers", []))
+                radius = dconf.get("radius", "10px")
 
-            # ✅ 날짜 칸 생성
-            for week in cal:
-                for d in week:
-                    if d == 0:
-                        html_code += "<div></div>"
-                    else:
-                        date_str = f"{year}-{month:02d}-{d:02d}"
-                        deco = decos["decos"].get(date_str, {})
-                        bg = deco.get("bg", "white")
-                        stickers = " ".join(deco.get("stickers", []))
+                # 날짜 카드
+                st.markdown(
+                    f"<div class='cal-cell' style='background:{bg}; border-radius:{radius};'>"
+                    f"<div class='cal-day'>{day}</div>"
+                    f"<div class='cal-stickers'>{stickers}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
 
-                        # ✅ 핵심 변경: href 대신 onclick 사용!
-                        html_code += f"""
-                        <div class="cal-cell" style="background:{bg};"
-                             onclick="window.location='?date={date_str}'">
-                            <div class="cal-day">{d}</div>
-                            <div class="cal-stickers">{stickers}</div>
-                        </div>
-                        """
+                # 클릭 버튼(스트림릿 이벤트로 처리 → iframe 중첩 없음)
+                if st.button("열기", key=f"open_{date_str}", help="이 날짜 보기", use_container_width=True):
+                    st.session_state.selected_date = date_str
+                    # 쿼리파라미터 쓰지 않고 상태로만 처리
+                    st.rerun()
 
-            html_code += "</div>"
-            html_component(html_code, height=600, scrolling=True)
+# ✅ 날짜 선택 상태가 있으면 모달로 표시
+if st.session_state.get("selected_date"):
+    sel = st.session_state["selected_date"]
+    with st.modal(f"📅 {sel}"):
+        st.subheader(f"{sel}의 추억")
+        mem = load_mems(username)["memories"].get(sel, [])
+        if mem:
+            for item in mem:
+                st.write(f"- **{item['title']}** — {item['text']}")
+        else:
+            st.info("아직 기록이 없어요!")
 
-        # ✅ 날짜 클릭 → 모달 열기
-        selected_date = get_query_value("date")
-        if selected_date:
-            st.session_state.selected_date = selected_date
+        with st.form("add_memory_form", clear_on_submit=True):
+            t = st.text_input("제목")
+            c = st.text_area("내용", height=120)
+            submitted = st.form_submit_button("저장")
+            if submitted:
+                data = load_mems(username)
+                data["memories"].setdefault(sel, []).append({
+                    "title": t, "text": c, "ts": datetime.now().isoformat(timespec="seconds")
+                })
+                save_mems(username, data)
+                st.success("저장되었습니다!")
+                st.rerun()
 
-            def show_modal():
-                with st.modal(f"📅 {selected_date}"):
-                    st.subheader(f"{selected_date}의 기록")
-
-                    mem = load_mems(username)["memories"].get(selected_date, [])
-                    if mem:
-                        for m in mem:
-                            st.write(f"- **{m['title']}** : {m['text']}")
-                    else:
-                        st.info("아직 기록이 없습니다!")
-
-                    with st.form("add_memory", clear_on_submit=True):
-                        t = st.text_input("제목")
-                        c = st.text_area("내용")
-                        if st.form_submit_button("추억 저장"):
-                            data = load_mems(username)
-                            data["memories"].setdefault(selected_date, []).append({
-                                "title": t, "text": c,
-                                "time": datetime.now().strftime("%H:%M")
-                            })
-                            save_mems(username, data)
-                            st.success("추억이 저장되었습니다!")
-                            set_query_params()  # URL 초기화
-                            st.rerun()
-
-                    if st.button("닫기"):
-                        set_query_params()
-                        st.rerun()
-
-            show_modal()
+        if st.button("닫기"):
+            st.session_state.selected_date = None
+            st.rerun()
 
         # ----------------------------------------------------------------
         # ---------------- (2) 자가진단 - 받는이 ------------------------
