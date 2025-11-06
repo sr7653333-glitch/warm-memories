@@ -1,8 +1,9 @@
-# app.py — 하루 추억 캘린더 (호환/안정 버전)
+# app.py — 하루 추억 캘린더 (안정판)
 # - html_component/iframe 미사용
-# - st.modal 미사용: st.dialog / st.experimental_dialog / 인라인 대체 (callable 체크)
-# - 날짜 클릭: Streamlit 버튼 이벤트 기반 (중첩 렌더 없음)
-# - 들여쓰기: 스페이스 4칸
+# - st.modal / st.dialog / st.experimental_dialog 전혀 사용 안 함
+# - 날짜 클릭: Streamlit 버튼 이벤트만 사용 (100% 동작)
+# - 상단 고정 오버레이 카드로 상세 표시 (닫기 버튼 제공)
+# - 로그인/회원가입(해시)·달력 꾸미기·추억 기록·맞춤질문·모니터링·그룹 편집 포함
 
 import streamlit as st
 import os
@@ -151,8 +152,25 @@ else:
 
     STICKER_PRESETS = ["🌸", "🌼", "🌟", "💖", "✨", "🍀", "🧸", "🎀", "📸", "☕", "🍰", "🎈", "📝", "👣", "🎵"]
 
-    # -------------------- 모달/대화상자/인라인 대체 호환 래퍼 --------------------
-    def render_detail_ui(sel_date: str):
+    # -------------------- 상세 화면(상단 고정 오버레이) 렌더러 --------------------
+    def render_detail_panel(sel_date: str):
+        # 상단 고정 카드(모달 대체)
+        st.markdown(
+            f"""
+            <div style="
+                position: sticky; top: 0; z-index: 9999;
+                background: rgba(255,255,255,0.98);
+                backdrop-filter: blur(4px);
+                border: 2px solid #eee; border-radius: 16px;
+                padding: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.08);
+                margin-bottom: 12px;">
+                <h3 style="margin: 0;">📅 {sel_date}</h3>
+                <div style="font-size: 13px; color: #666;">상단 고정 패널입니다. 닫기를 누르면 사라져요.</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
         st.subheader("📔 추억")
         mem = load_mems(username)["memories"].get(sel_date, [])
         if mem:
@@ -180,23 +198,6 @@ else:
         if st.button("닫기"):
             st.session_state.selected_date = None
             st.rerun()
-
-    def open_detail(sel_date: str):
-        Dialog = getattr(st, "dialog", None)
-        if not callable(Dialog):
-            Dialog = getattr(st, "experimental_dialog", None)
-        if callable(Dialog):
-            with Dialog(f"📅 {sel_date}"):
-                render_detail_ui(sel_date)
-        else:
-            # 모달이 없는 구버전: 상단 고정 카드로 대체
-            st.markdown(
-                f"<div style='position:sticky;top:0;z-index:9;border:2px solid #eee;border-radius:16px;"
-                f"padding:16px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.08);margin-bottom:12px;'>"
-                f"<h3 style='margin:0;'>📅 {sel_date}</h3></div>",
-                unsafe_allow_html=True
-            )
-            render_detail_ui(sel_date)
 
     # -------------------- 달력 --------------------
     if menu == "달력":
@@ -321,9 +322,9 @@ else:
                         unsafe_allow_html=True
                     )
 
-        # 선택된 날짜가 있으면 상세 열기 (버전 호환)
+        # 선택된 날짜가 있으면 상단 오버레이로 상세 열기
         if st.session_state.get("selected_date"):
-            open_detail(st.session_state["selected_date"])
+            render_detail_panel(st.session_state["selected_date"])
 
     # -------------------- 자가진단 (받는이) --------------------
     if menu == "자가진단" and role == "받는이":
@@ -497,3 +498,4 @@ else:
                     st.rerun()
         else:
             st.info("아직 속한 그룹이 없습니다. 위에서 새 그룹을 만들어보세요.")
+
