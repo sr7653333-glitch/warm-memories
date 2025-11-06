@@ -648,36 +648,32 @@ else:
 
         if my_groups:
             st.markdown("### 내 그룹")
-            for g in my_groups:
+            for idx, g in enumerate(my_groups):
                 col1, col2, col3 = st.columns([3, 2, 2])
                 with col1:
                     st.markdown(f"**{g['group_name']}** - 멤버: {', '.join(g['members'])}")
+
                 with col2:
                     candidates = [u["username"] for u in accounts["users"] if u["username"] not in g["members"]]
-                    add_user = st.selectbox(f"멤버 추가 ({g['group_name']})", ["선택 없음"] + candidates, key=f"add_{g['group_name']}")
+                    add_user = st.selectbox(
+                        f"멤버 추가 ({g['group_name']})",
+                        ["선택 없음"] + candidates,
+                        key=f"add_{g['group_name']}_{idx}"
+                    )
+
                 with col3:
-                    if st.button("멤버 추가", key=f"add_btn_{g['group_name']}"):
+                    if st.button("멤버 추가", key=f"add_btn_{g['group_name']}_{idx}"):
                         if add_user and add_user != "선택 없음":
                             g["members"].append(add_user)
                             save_json(GROUPS_FILE, groups)
                             st.success(f"{add_user} 님을 추가했습니다.")
                             st.rerun()
-                if st.button(f"그룹 나가기 ({g['group_name']})", key=f"leave_{g['group_name']}"):
+
+                # 🔧 여기 블록이 들여쓰기 때문에 에러 났던 부분!
+                if st.button(f"그룹 나가기 ({g['group_name']})", key=f"leave_{g['group_name']}_{idx}"):
                     g["members"].remove(username)
                     if len(g["members"]) == 0:
                         groups["groups"].remove(g)
                     save_json(GROUPS_FILE, groups)
                     st.success(f"'{g['group_name']}' 그룹에서 나갔습니다.")
                     st.rerun()
-        else:
-            st.info("아직 속한 그룹이 없습니다. 위에서 새 그룹을 만들어보세요.")
-
-                        groups["groups"].remove(g)
-                    save_json(GROUPS_FILE, groups)
-                    st.success(f"'{g['group_name']}' 그룹에서 나갔습니다.")
-                    st.rerun()
-        else:
-            st.info("아직 속한 그룹이 없습니다. 위에서 새 그룹을 만들어보세요.")
-
-
-
