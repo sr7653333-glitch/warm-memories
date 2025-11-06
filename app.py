@@ -147,8 +147,8 @@ else:
         # -------------------- 달력 --------------------
     if sel_menu == "달력":
         st.title("🗓 하루 추억 달력")
-
-       with right:
+        
+with right:
     st.markdown(
         """
         <style>
