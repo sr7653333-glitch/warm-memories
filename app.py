@@ -326,8 +326,9 @@ else:
                     bg_style = f"background:{bg};" if bg else ""
                     r_style  = f"border-radius:{radius};"
                     bg_div = f"<div class='cal-bg' style=\"background-image:url('{bg_img}')\"></div>" if bg_img else ""
+                    # target="_top" 추가해 iframe 중첩 방지
                     cell = f"""
-                    <a class="cal-link" href="?date={date_str}">
+                    <a class="cal-link" href="?date={date_str}" target="_top">
                         <div class="cal-cell" style="{bg_style}{r_style}">
                             {bg_div}
                             <div class="cal-content">
@@ -401,6 +402,7 @@ else:
         # ---- 달력 렌더 후: date 쿼리 있으면 모달로 열기 ----
         qdate = get_query_value("date", None)
         if qdate:
+            st.session_state.selected_date = qdate
             open_detail_modal(qdate, username)
 
     # -------------------- 자가진단 (받는이) --------------------
@@ -553,5 +555,4 @@ else:
         else:
             st.info("아직 속한 그룹이 없습니다. 위에서 새 그룹을 만들어보세요.")
 
-# 끝.
 
