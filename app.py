@@ -144,89 +144,101 @@ else:
     st.session_state.theme = st.sidebar.selectbox("🎨 테마", list(theme_colors.keys()))
     st.markdown(f"<style>body {{ background-color: {theme_colors[st.session_state.theme]}; }}</style>", unsafe_allow_html=True)
 
-    # -------------------- 달력 기능 --------------------
+        # -------------------- 달력 --------------------
     if sel_menu == "달력":
         st.title("🗓 하루 추억 달력")
 
-        col1, col2 = st.columns([1,3])
+        col1, col2 = st.columns([1, 3])
         with col1:
             year = st.number_input("연도", 2000, 2100, datetime.now().year)
             month = st.number_input("월", 1, 12, datetime.now().month)
             decorate_mode = st.checkbox("🎀 꾸미기 모드")
+
         with col2:
             st.subheader(f"{int(year)}년 {int(month)}월")
-            mat = calendar.monthcalendar(int(year), int(month))
+
+            cal = calendar.monthcalendar(int(year), int(month))
             decos = load_decos(username)
 
-            css = """
+            # ✅ CSS + HTML
+            html_code = """
             <style>
-            .grid {display:grid;grid-template-columns:repeat(7,1fr);gap:8px;}
-            .day-cell {
-                border:1px solid #ccc; background:white; border-radius:10px;
-                padding:10px; min-height:80px; position:relative; cursor:pointer;
-            }
-            .day-cell:hover { background:#ffe8f3; }
-            .day-num { font-weight:700; }
-            .stickers { font-size:20px; margin-top:5px; }
-            a.link { text-decoration:none; color:inherit; }
+                .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
+                .cal-cell {
+                    border:1px solid #ccc;
+                    border-radius:10px;
+                    background:white;
+                    padding:10px;
+                    cursor:pointer;
+                    min-height:80px;
+                    position:relative;
+                }
+                .cal-cell:hover { background:#ffe8f3; }
+                .cal-day { font-weight:700; }
+                .cal-stickers { font-size:20px; margin-top:5px; }
             </style>
+            <div class='cal-grid'>
             """
 
-            html = css + "<div class='grid'>"
-            for week in mat:
+            # ✅ 날짜 칸 생성
+            for week in cal:
                 for d in week:
                     if d == 0:
-                        html += "<div></div>"
+                        html_code += "<div></div>"
                     else:
-                        dstr = f"{year}-{month:02d}-{d:02d}"
-                        dc = decos["decos"].get(dstr, {})
-                        bg = dc.get("bg", "white")
-                        stickers = " ".join(dc.get("stickers", []))
-                        html += f"""
-                        <a class='link' href='?date={dstr}' target='_top'>
-                            <div class='day-cell' style='background:{bg};'>
-                                <div class='day-num'>{d}</div>
-                                <div class='stickers'>{stickers}</div>
-                            </div>
-                        </a>
-                        """
-            html += "</div>"
-            html_component(html, height=600, scrolling=True)
+                        date_str = f"{year}-{month:02d}-{d:02d}"
+                        deco = decos["decos"].get(date_str, {})
+                        bg = deco.get("bg", "white")
+                        stickers = " ".join(deco.get("stickers", []))
 
-        # 날짜 클릭 시 모달 열기
+                        # ✅ 핵심 변경: href 대신 onclick 사용!
+                        html_code += f"""
+                        <div class="cal-cell" style="background:{bg};"
+                             onclick="window.location='?date={date_str}'">
+                            <div class="cal-day">{d}</div>
+                            <div class="cal-stickers">{stickers}</div>
+                        </div>
+                        """
+
+            html_code += "</div>"
+            html_component(html_code, height=600, scrolling=True)
+
+        # ✅ 날짜 클릭 → 모달 열기
         selected_date = get_query_value("date")
         if selected_date:
             st.session_state.selected_date = selected_date
 
-            def show_detail(d):
-                with st.modal(f"📅 {d} 기록"):
-                    st.subheader(f"{d}의 추억")
-                    mem = load_mems(username)["memories"].get(d, [])
+            def show_modal():
+                with st.modal(f"📅 {selected_date}"):
+                    st.subheader(f"{selected_date}의 기록")
+
+                    mem = load_mems(username)["memories"].get(selected_date, [])
                     if mem:
                         for m in mem:
                             st.write(f"- **{m['title']}** : {m['text']}")
                     else:
-                        st.info("기록이 없습니다.✨")
+                        st.info("아직 기록이 없습니다!")
 
                     with st.form("add_memory", clear_on_submit=True):
                         t = st.text_input("제목")
                         c = st.text_area("내용")
-                        if st.form_submit_button("저장"):
+                        if st.form_submit_button("추억 저장"):
                             data = load_mems(username)
-                            data["memories"].setdefault(d, []).append({
+                            data["memories"].setdefault(selected_date, []).append({
                                 "title": t, "text": c,
                                 "time": datetime.now().strftime("%H:%M")
                             })
                             save_mems(username, data)
-                            st.success("저장되었습니다!")
-                            set_query_params() # URL 초기화
+                            st.success("추억이 저장되었습니다!")
+                            set_query_params()  # URL 초기화
                             st.rerun()
 
                     if st.button("닫기"):
                         set_query_params()
                         st.rerun()
 
-            show_detail(selected_date)
+            show_modal()
+
         # ----------------------------------------------------------------
         # ---------------- (2) 자가진단 - 받는이 ------------------------
         # ----------------------------------------------------------------
