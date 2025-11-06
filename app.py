@@ -47,7 +47,8 @@ accounts       = load_json(ACCOUNTS_FILE, {"users": []})
 groups         = load_json(GROUPS_FILE, {"groups": []})
 diagnosis_data = load_json(DIAGNOSIS_FILE, {"records": []})
 questions_data = load_json(QUESTIONS_FILE, {"custom_questions": []})
-# custom_questions: [{ "id": "cq_...", "creator": "sender", "targets": ["rec1"], "text":"물을 6컵?", "type":"yesno"/"scale"/"choice"/"text", ... }]
+# custom_questions: [{ "id": "cq_...", "creator": "sender", "targets": ["rec1"],
+#   "text":"물을 6컵?", "type":"yesno"/"scale"/"choice"/"text", ... }]
 
 # 비밀번호 혼재 자동 정리
 changed = False
@@ -212,9 +213,11 @@ else:
             os.remove(SESSION_FILE)
         st.rerun()
 
-    # 메뉴: 달력(최상위) → 자가진단 → (보낸이 전용) 모니터링 → 그룹 편집
-    menu_items = ["달력", "자가진단"]
-    if role == "보낸이":
+    # ✅ 역할별 메뉴 (받는이만 자가진단, 보낸이는 모니터링)
+    menu_items = ["달력"]  # 기본
+    if role == "받는이":
+        menu_items.append("자가진단")
+    elif role == "보낸이":
         menu_items.append("자가진단 모니터링")
     menu_items.append("그룹 편집")
     menu = st.sidebar.radio("메뉴", menu_items, index=0)
@@ -280,7 +283,7 @@ else:
                         st.rerun()
 
     # -----------------------------
-    # 자가진단 (받는이)
+    # 자가진단 (받는이만)
     # -----------------------------
     if menu == "자가진단" and role == "받는이":
         st.title("📝 오늘의 자가진단")
@@ -348,7 +351,7 @@ else:
                 st.rerun()
 
     # -----------------------------
-    # 자가진단 모니터링 (보낸이)
+    # 자가진단 모니터링 (보낸이만)
     # + 맞춤 질문 만들기/배포
     # -----------------------------
     if menu == "자가진단 모니터링" and role == "보낸이":
