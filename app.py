@@ -1,22 +1,31 @@
-# app.py — 하루 추억 캘린더 (안정판)
-# - html_component/iframe 미사용
-# - st.modal / st.dialog / st.experimental_dialog 전혀 사용 안 함
-# - 날짜 클릭: Streamlit 버튼 이벤트만 사용 (100% 동작)
-# - 상단 고정 오버레이 카드로 상세 표시 (닫기 버튼 제공)
-# - 로그인/회원가입(해시)·달력 꾸미기·추억 기록·맞춤질문·모니터링·그룹 편집 포함
+# app.py — 하루 추억 캘린더 (안정+지속 접속 버전)
+# - Streamlit Cloud 환경 대비:
+#   * st_autorefresh(있으면 사용)로 15분 keep-alive
+#   * 매직 로그인(토큰)으로 세션 초기화 후에도 원클릭 자동접속
+# - 모달/iframe 미사용. 버튼 이벤트만 사용.
+# - 기존 기능 유지: 로그인/회원가입/그룹/달력 꾸미기/자가진단/모니터링
 
-import streamlit as st
 import os
 import json
 import hashlib
 import calendar
+import secrets
+import time
 from datetime import datetime
+import streamlit as st
 
 # -------------------- 기본 설정 & 폴더 --------------------
 st.set_page_config(page_title="하루 추억 캘린더", layout="wide")
 os.makedirs("accounts", exist_ok=True)
 os.makedirs("accounts/memories", exist_ok=True)
 os.makedirs("accounts/decos", exist_ok=True)
+
+# -------------------- Keep-Alive (있으면 사용, 없으면 무시) --------------------
+try:
+    from streamlit_autorefresh import st_autorefresh
+    st_autorefresh(interval=15 * 60 * 1000, key="keepalive_15m")  # 15분마다 자동 새로고침
+except Exception:
+    pass  # 라이브러리 없으면 조용히 패스
 
 # -------------------- 유틸 --------------------
 def load_json(path, default):
@@ -46,17 +55,44 @@ def deco_path(username): return f"accounts/decos/{username}.json"
 def load_decos(username): return load_json(deco_path(username), {"decos": {}})
 def save_decos(username, data): save_json(deco_path(username), data)
 
+def get_query_params():
+    try:
+        return dict(st.query_params)
+    except Exception:
+        try:
+            return st.experimental_get_query_params()
+        except Exception:
+            return {}
+
+def set_query_params(**kwargs):
+    try:
+        st.query_params.update(kwargs); return
+    except Exception:
+        try:
+            st.experimental_set_query_params(**kwargs)
+        except Exception:
+            pass
+
+def get_query_value(key, default=None):
+    qp = get_query_params()
+    if key in qp:
+        v = qp[key]
+        return v[0] if isinstance(v, list) else v
+    return default
+
 # -------------------- 데이터 파일 --------------------
 ACCOUNTS_FILE  = "accounts/accounts.json"
 GROUPS_FILE    = "accounts/groups.json"
 SESSION_FILE   = "accounts/sessions.json"
 DIAGNOSIS_FILE = "accounts/diagnosis.json"
 QUESTIONS_FILE = "accounts/questions.json"
+TOKENS_FILE    = "accounts/tokens.json"  # 매직 로그인
 
 accounts       = load_json(ACCOUNTS_FILE, {"users": []})
 groups         = load_json(GROUPS_FILE, {"groups": []})
 diagnosis_data = load_json(DIAGNOSIS_FILE, {"records": []})
 questions_data = load_json(QUESTIONS_FILE, {"custom_questions": []})
+tokens_db      = load_json(TOKENS_FILE, {"tokens": []})
 
 # 비밀번호 평문 → 해시 마이그레이션
 changed = False
@@ -66,6 +102,26 @@ for u in accounts["users"]:
         changed = True
 if changed:
     save_json(ACCOUNTS_FILE, accounts)
+
+# -------------------- 매직 로그인(토큰) --------------------
+def load_tokens(): return load_json(TOKENS_FILE, {"tokens": []})
+def save_tokens(d): save_json(TOKENS_FILE, d)
+
+def issue_token(username: str, days: int = 14) -> str:
+    toks = load_tokens()
+    tok = secrets.token_urlsafe(24)
+    exp = int(time.time()) + days * 24 * 3600
+    toks["tokens"].append({"t": tok, "u": username, "exp": exp})
+    save_tokens(toks)
+    return tok
+
+def validate_token(t: str):
+    toks = load_tokens()
+    now = int(time.time())
+    for rec in toks["tokens"]:
+        if rec["t"] == t and rec["exp"] > now:
+            return rec["u"]
+    return None
 
 # -------------------- 세션 --------------------
 for k, v in [
@@ -77,6 +133,26 @@ for k, v in [
 ]:
     if k not in st.session_state:
         st.session_state[k] = v
+
+# 매직 링크로 자동 로그인 시도 (로그인 전)
+if not st.session_state.logged_in:
+    qp = get_query_params()
+    t = qp.get("t", None)
+    if isinstance(t, list): t = t[0]
+    if t:
+        u = validate_token(t)
+        if u:
+            user = next((x for x in accounts["users"] if x["username"] == u), None)
+            if user:
+                st.session_state.logged_in = True
+                st.session_state.username = u
+                st.session_state.role = user["role"]
+                save_json(SESSION_FILE, {"username": u, "role": user["role"]})
+                st.success(f"{u}님 자동 로그인되었습니다.")
+                # query에서 t 제거(보안/미관)
+                qp = get_query_params(); qp.pop("t", None)
+                set_query_params(**qp)
+                st.rerun()
 
 # 이전 세션 복원
 if not st.session_state.logged_in and os.path.exists(SESSION_FILE):
@@ -112,10 +188,16 @@ if not st.session_state.logged_in:
             hashed = hash_pw(pw)
             user = next((u for u in accounts["users"] if u["username"] == uid and u["password"] == hashed), None)
             if user:
+                # 로그인 성공
                 st.session_state.logged_in = True
                 st.session_state.username = uid
                 st.session_state.role = user["role"]
                 save_json(SESSION_FILE, {"username": uid, "role": user["role"]})
+
+                # 매직 링크 발급
+                tok = issue_token(uid, days=14)
+                st.success("로그인 되었습니다. 자동접속 링크가 사이드바에 생성됩니다.")
+                # 사이드바에 링크 표시를 위해 rerun
                 st.rerun()
             else:
                 st.warning("아이디 또는 비밀번호가 올바르지 않습니다.")
@@ -125,12 +207,25 @@ else:
     username = st.session_state.username
     role = st.session_state.role
 
+    # 사이드바: 사용자/로그아웃
     st.sidebar.markdown(f"**{username}님 ({role})**")
+    # 매직 링크 안내
+    try:
+        base_qp = get_query_params()
+        tok = issue_token(username, days=14)  # 새 토큰 한 번 더 발급(이전 토큰도 유효)
+        st.sidebar.markdown("### 🔑 자동접속 링크")
+        st.sidebar.write("아래 링크(또는 토큰)를 즐겨찾기/바탕화면에 저장해두면 로그인 없이 접속돼요. (14일 유효)")
+        st.sidebar.code(f"?t={tok}", language="text")
+        st.sidebar.caption("앱의 기본 URL 뒤에 그대로 붙여 사용하세요. 예: https://myapp.streamlit.app/?t=...")
+    except Exception:
+        pass
+
     if st.sidebar.button("로그아웃"):
         st.session_state.logged_in = False
         st.session_state.username = ""
         st.session_state.role = ""
         st.session_state.selected_date = None
+        # 세션 파일은 '로그아웃 시'에만 삭제 (의도치 초기화 대비)
         if os.path.exists(SESSION_FILE):
             os.remove(SESSION_FILE)
         st.rerun()
@@ -144,6 +239,15 @@ else:
     menu_items.append("그룹 편집")
     menu = st.sidebar.radio("메뉴", menu_items, index=0)
 
+    # 전역 큰 글꼴/버튼(어르신 UI)
+    st.markdown("""
+    <style>
+    html, body, [class*="st-"] { font-size:18px; }
+    h1,h2,h3 { font-size:26px; }
+    .stButton>button { min-height:44px; font-size:18px; }
+    </style>
+    """, unsafe_allow_html=True)
+
     # 테마
     st.sidebar.markdown("### 🎨 달력 테마")
     theme_colors = {"기본": "#f0f2f6", "다크": "#1e1e1e", "핑크": "#ffe4ec", "미니멀": "#ffffff"}
@@ -152,9 +256,8 @@ else:
 
     STICKER_PRESETS = ["🌸", "🌼", "🌟", "💖", "✨", "🍀", "🧸", "🎀", "📸", "☕", "🍰", "🎈", "📝", "👣", "🎵"]
 
-    # -------------------- 상세 화면(상단 고정 오버레이) 렌더러 --------------------
+    # -------------------- 상세(상단 고정 오버레이) --------------------
     def render_detail_panel(sel_date: str):
-        # 상단 고정 카드(모달 대체)
         st.markdown(
             f"""
             <div style="
@@ -220,42 +323,35 @@ else:
         with right:
             st.subheader(f"{int(year)}년 {int(month)}월")
 
-            # 주 단위 그리드 (Native Streamlit만 사용 → iframe 문제 없음)
+            # 그리드 스타일
+            st.markdown("""
+            <style>
+                .cal-card {
+                    border:1px solid rgba(0,0,0,.08);
+                    border-radius:12px;
+                    min-height:96px;
+                    padding:8px;
+                    background:#fff;
+                }
+                .cal-day { font-weight:800; margin-bottom:6px; }
+                .cal-stickers { font-size:20px; line-height:1.1; }
+            </style>
+            """, unsafe_allow_html=True)
+
             cal_mat = calendar.monthcalendar(int(year), int(month))
-
-            # 간단한 스타일
-            st.markdown(
-                """
-                <style>
-                    .cal-card {
-                        border:1px solid rgba(0,0,0,.08);
-                        border-radius:12px;
-                        min-height:96px;
-                        padding:8px;
-                        background:#fff;
-                    }
-                    .cal-day { font-weight:800; margin-bottom:6px; }
-                    .cal-stickers { font-size:20px; line-height:1.1; }
-                </style>
-                """,
-                unsafe_allow_html=True
-            )
-
             for week in cal_mat:
                 cols = st.columns(7, gap="small")
                 for i, day in enumerate(week):
                     with cols[i]:
                         if day == 0:
-                            st.write("")  # 빈 칸
+                            st.write("")
                             continue
-
                         date_key = f"{int(year)}-{int(month):02d}-{day:02d}"
                         dconf = decos["decos"].get(date_key, {})
                         bg = dconf.get("bg", "#ffffff")
                         radius = dconf.get("radius", "12px")
                         stickers = " ".join(dconf.get("stickers", []))
 
-                        # 카드(꾸미기 반영)
                         st.markdown(
                             f"<div class='cal-card' style='background:{bg}; border-radius:{radius};'>"
                             f"<div class='cal-day'>{day}</div>"
@@ -264,7 +360,6 @@ else:
                             unsafe_allow_html=True
                         )
 
-                        # 날짜 클릭(버튼 이벤트) → 상태로만 제어
                         if st.button("열기", key=f"open_{date_key}", use_container_width=True):
                             st.session_state.selected_date = date_key
                             st.rerun()
@@ -322,7 +417,7 @@ else:
                         unsafe_allow_html=True
                     )
 
-        # 선택된 날짜가 있으면 상단 오버레이로 상세 열기
+        # 선택된 날짜가 있으면 상단 오버레이 표시
         if st.session_state.get("selected_date"):
             render_detail_panel(st.session_state["selected_date"])
 
@@ -332,6 +427,7 @@ else:
         today = datetime.now().strftime("%Y-%m-%d")
         done = any(r.get("username") == username and r.get("date") == today for r in diagnosis_data["records"])
 
+        # 기본 5문항
         def_qs = [
             ("오늘 기분은 어떠세요? (1~5)", 1, 5, 3, "mood"),
             ("어젯밤 잠은 편안하셨어요? (1~5)", 1, 5, 3, "sleep"),
@@ -497,5 +593,7 @@ else:
                     st.success(f"'{g['group_name']}' 그룹에서 나갔습니다.")
                     st.rerun()
         else:
+            st.info("아직 속한 그룹이 없습니다. 위에서 새 그룹을 만들어보세요.")
+
             st.info("아직 속한 그룹이 없습니다. 위에서 새 그룹을 만들어보세요.")
 
