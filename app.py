@@ -103,25 +103,54 @@ for u in accounts["users"]:
 if changed:
     save_json(ACCOUNTS_FILE, accounts)
 
-# -------------------- 매직 로그인(토큰) --------------------
-def load_tokens(): return load_json(TOKENS_FILE, {"tokens": []})
-def save_tokens(d): save_json(TOKENS_FILE, d)
+# ---- 매직 링크: 안전한 노출 방식 ----
+# secrets.toml 에서 끄고 켤 수 있음:
+# [FEATURES]
+# MAGIC_LINK = true
+enable_magic = False
+try:
+    enable_magic = bool(st.secrets.get("FEATURES", {}).get("MAGIC_LINK", True))
+except Exception:
+    enable_magic = True  # secrets 없으면 기본 허용 (원하면 False로)
 
-def issue_token(username: str, days: int = 14) -> str:
-    toks = load_tokens()
-    tok = secrets.token_urlsafe(24)
-    exp = int(time.time()) + days * 24 * 3600
-    toks["tokens"].append({"t": tok, "u": username, "exp": exp})
-    save_tokens(toks)
-    return tok
+if enable_magic:
+    st.sidebar.markdown("### 🔑 자동접속")
+    st.sidebar.caption("필요할 때만 생성됩니다. 표시된 토큰은 1회용/짧은 만료를 권장합니다.")
 
-def validate_token(t: str):
-    toks = load_tokens()
-    now = int(time.time())
-    for rec in toks["tokens"]:
-        if rec["t"] == t and rec["exp"] > now:
-            return rec["u"]
-    return None
+    # 짧은 만료로 재발급 (예: 24시간)
+    def issue_short_token(u: str, hours: int = 24):
+        toks = load_tokens()
+        tok = secrets.token_urlsafe(24)
+        exp = int(time.time()) + hours * 3600
+        toks["tokens"].append({"t": tok, "u": u, "exp": exp})
+        save_tokens(toks)
+        return tok
+
+    # 내 토큰 전부 폐기
+    def revoke_all_tokens(u: str):
+        toks = load_tokens()
+        toks["tokens"] = [rec for rec in toks["tokens"] if rec.get("u") != u]
+        save_tokens(toks)
+
+    colA, colB = st.sidebar.columns(2)
+    if colA.button("만들기"):
+        tok = issue_short_token(username, hours=24)
+        st.session_state["_last_token"] = tok
+        st.sidebar.success("토큰이 생성됐어요. 아래를 복사해 두세요.")
+    if colB.button("모두 폐기"):
+        revoke_all_tokens(username)
+        st.session_state.pop("_last_token", None)
+        st.sidebar.info("내 토큰을 모두 폐기했습니다.")
+
+    # 만들어진 토큰만 표시(자동으로 항상 노출하지 않음)
+    if "_last_token" in st.session_state:
+        tok = st.session_state["_last_token"]
+        st.sidebar.markdown("**접속 파라미터**")
+        st.sidebar.code(f"?t={tok}", language="text")
+        st.sidebar.caption("앱 기본 URL 뒤에 붙여 사용: https://YOUR-APP/?t=...")
+
+    # 토큰 자동 발급/자동 표시 안 함 (기존처럼 로그인 성공 시 바로 노출 X)
+
 
 # -------------------- 세션 --------------------
 for k, v in [
