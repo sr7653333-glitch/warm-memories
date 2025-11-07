@@ -1,22 +1,27 @@
-# app.py — 하루 추억 캘린더 (안정판)
-# - html_component/iframe 미사용
-# - st.modal / st.dialog / st.experimental_dialog 전혀 사용 안 함
-# - 날짜 클릭: Streamlit 버튼 이벤트만 사용 (100% 동작)
-# - 상단 고정 오버레이 카드로 상세 표시 (닫기 버튼 제공)
-# - 로그인/회원가입(해시)·달력 꾸미기·추억 기록·맞춤질문·모니터링·그룹 편집 포함
+# app.py — 하루 추억 캘린더 (안정판: 매직링크 제거, Keep-Alive만 유지)
+# - Streamlit Cloud 대비: st_autorefresh(있으면 사용)로 15분 간격 keep-alive
+# - 모달/iframe 미사용. 버튼 이벤트만 사용(날짜 클릭 안정)
+# - 기능: 로그인/회원가입(해시), 그룹, 달력 꾸미기, 추억 기록, 자가진단(받는이), 모니터링(보낸이)
 
-import streamlit as st
 import os
 import json
 import hashlib
 import calendar
 from datetime import datetime
+import streamlit as st
 
 # -------------------- 기본 설정 & 폴더 --------------------
 st.set_page_config(page_title="하루 추억 캘린더", layout="wide")
 os.makedirs("accounts", exist_ok=True)
 os.makedirs("accounts/memories", exist_ok=True)
 os.makedirs("accounts/decos", exist_ok=True)
+
+# -------------------- Keep-Alive (있으면 사용, 없으면 무시) --------------------
+try:
+    from streamlit_autorefresh import st_autorefresh
+    st_autorefresh(interval=15 * 60 * 1000, key="keepalive_15m")  # 15분마다 자동 새로고침
+except Exception:
+    pass
 
 # -------------------- 유틸 --------------------
 def load_json(path, default):
@@ -45,6 +50,31 @@ def save_mems(username, data): save_json(mem_path(username), data)
 def deco_path(username): return f"accounts/decos/{username}.json"
 def load_decos(username): return load_json(deco_path(username), {"decos": {}})
 def save_decos(username, data): save_json(deco_path(username), data)
+
+def get_query_params():
+    try:
+        return dict(st.query_params)
+    except Exception:
+        try:
+            return st.experimental_get_query_params()
+        except Exception:
+            return {}
+
+def set_query_params(**kwargs):
+    try:
+        st.query_params.update(kwargs); return
+    except Exception:
+        try:
+            st.experimental_set_query_params(**kwargs)
+        except Exception:
+            pass
+
+def get_query_value(key, default=None):
+    qp = get_query_params()
+    if key in qp:
+        v = qp[key]
+        return v[0] if isinstance(v, list) else v
+    return default
 
 # -------------------- 데이터 파일 --------------------
 ACCOUNTS_FILE  = "accounts/accounts.json"
@@ -125,6 +155,7 @@ else:
     username = st.session_state.username
     role = st.session_state.role
 
+    # 사이드바: 사용자/로그아웃
     st.sidebar.markdown(f"**{username}님 ({role})**")
     if st.sidebar.button("로그아웃"):
         st.session_state.logged_in = False
@@ -144,6 +175,15 @@ else:
     menu_items.append("그룹 편집")
     menu = st.sidebar.radio("메뉴", menu_items, index=0)
 
+    # 전역 큰 글꼴/버튼(어르신 UI)
+    st.markdown("""
+    <style>
+    html, body, [class*="st-"] { font-size:18px; }
+    h1,h2,h3 { font-size:26px; }
+    .stButton>button { min-height:44px; font-size:18px; }
+    </style>
+    """, unsafe_allow_html=True)
+
     # 테마
     st.sidebar.markdown("### 🎨 달력 테마")
     theme_colors = {"기본": "#f0f2f6", "다크": "#1e1e1e", "핑크": "#ffe4ec", "미니멀": "#ffffff"}
@@ -152,9 +192,8 @@ else:
 
     STICKER_PRESETS = ["🌸", "🌼", "🌟", "💖", "✨", "🍀", "🧸", "🎀", "📸", "☕", "🍰", "🎈", "📝", "👣", "🎵"]
 
-    # -------------------- 상세 화면(상단 고정 오버레이) 렌더러 --------------------
+    # -------------------- 상세(상단 고정 오버레이) --------------------
     def render_detail_panel(sel_date: str):
-        # 상단 고정 카드(모달 대체)
         st.markdown(
             f"""
             <div style="
@@ -220,42 +259,35 @@ else:
         with right:
             st.subheader(f"{int(year)}년 {int(month)}월")
 
-            # 주 단위 그리드 (Native Streamlit만 사용 → iframe 문제 없음)
+            # 그리드 스타일
+            st.markdown("""
+            <style>
+                .cal-card {
+                    border:1px solid rgba(0,0,0,.08);
+                    border-radius:12px;
+                    min-height:96px;
+                    padding:8px;
+                    background:#fff;
+                }
+                .cal-day { font-weight:800; margin-bottom:6px; }
+                .cal-stickers { font-size:20px; line-height:1.1; }
+            </style>
+            """, unsafe_allow_html=True)
+
             cal_mat = calendar.monthcalendar(int(year), int(month))
-
-            # 간단한 스타일
-            st.markdown(
-                """
-                <style>
-                    .cal-card {
-                        border:1px solid rgba(0,0,0,.08);
-                        border-radius:12px;
-                        min-height:96px;
-                        padding:8px;
-                        background:#fff;
-                    }
-                    .cal-day { font-weight:800; margin-bottom:6px; }
-                    .cal-stickers { font-size:20px; line-height:1.1; }
-                </style>
-                """,
-                unsafe_allow_html=True
-            )
-
             for week in cal_mat:
                 cols = st.columns(7, gap="small")
                 for i, day in enumerate(week):
                     with cols[i]:
                         if day == 0:
-                            st.write("")  # 빈 칸
+                            st.write("")
                             continue
-
                         date_key = f"{int(year)}-{int(month):02d}-{day:02d}"
                         dconf = decos["decos"].get(date_key, {})
                         bg = dconf.get("bg", "#ffffff")
                         radius = dconf.get("radius", "12px")
                         stickers = " ".join(dconf.get("stickers", []))
 
-                        # 카드(꾸미기 반영)
                         st.markdown(
                             f"<div class='cal-card' style='background:{bg}; border-radius:{radius};'>"
                             f"<div class='cal-day'>{day}</div>"
@@ -264,7 +296,6 @@ else:
                             unsafe_allow_html=True
                         )
 
-                        # 날짜 클릭(버튼 이벤트) → 상태로만 제어
                         if st.button("열기", key=f"open_{date_key}", use_container_width=True):
                             st.session_state.selected_date = date_key
                             st.rerun()
@@ -322,7 +353,7 @@ else:
                         unsafe_allow_html=True
                     )
 
-        # 선택된 날짜가 있으면 상단 오버레이로 상세 열기
+        # 선택된 날짜가 있으면 상단 오버레이 표시
         if st.session_state.get("selected_date"):
             render_detail_panel(st.session_state["selected_date"])
 
@@ -332,6 +363,7 @@ else:
         today = datetime.now().strftime("%Y-%m-%d")
         done = any(r.get("username") == username and r.get("date") == today for r in diagnosis_data["records"])
 
+        # 기본 5문항
         def_qs = [
             ("오늘 기분은 어떠세요? (1~5)", 1, 5, 3, "mood"),
             ("어젯밤 잠은 편안하셨어요? (1~5)", 1, 5, 3, "sleep"),
