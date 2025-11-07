@@ -249,10 +249,10 @@ else:
             year = st.number_input("연도", 2000, 2100, datetime.now().year, step=1)
             month = st.number_input("월", 1, 12, datetime.now().month, step=1)
             decorate_mode = st.toggle("🎀 꾸미기 모드", value=False, help="날짜별 배경/스티커/모서리 둥글기 저장")
-
+            
             if st.session_state.selected_date:
                 st.info(f"선택된 날짜: **{st.session_state.selected_date}**")
-                if st.button("선택 해제"):
+                if st.button("선택 해제", key="left_unselect"):
                     st.session_state.selected_date = None
                     st.rerun()
 
@@ -339,9 +339,10 @@ else:
                                 st.info("초기화했습니다.")
                                 st.rerun()
                     with col_c:
-                        if st.button("선택 해제"):
+                        if st.button("선택 해제", key="decor_unselect"):
                             st.session_state.selected_date = None
                             st.rerun()
+
 
                 with c2:
                     st.markdown("**미리보기**")
