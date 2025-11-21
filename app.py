@@ -274,31 +274,32 @@ else:
             </style>
             """, unsafe_allow_html=True)
 
-            cal_mat = calendar.monthcalendar(int(year), int(month))
-            for week in cal_mat:
-                cols = st.columns(7, gap="small")
-                for i, day in enumerate(week):
-                    with cols[i]:
-                        if day == 0:
-                            st.write("")
-                            continue
-                        date_key = f"{int(year)}-{int(month):02d}-{day:02d}"
-                        dconf = decos["decos"].get(date_key, {})
-                        bg = dconf.get("bg", "#ffffff")
-                        radius = dconf.get("radius", "12px")
-                        stickers = " ".join(dconf.get("stickers", []))
+cal_mat = calendar.monthcalendar(int(year), int(month))
+for week in cal_mat:
+    cols = st.columns(7, gap="small")
+    for i, day in enumerate(week):
+        with cols[i]:
+            if day == 0:
+                st.write("")
+                continue
 
-                        st.markdown(
-                            f"<div class='cal-card' style='background:{bg}; border-radius:{radius};'>"
-                            f"<div class='cal-day'>{day}</div>"
-                            f"<div class='cal-stickers'>{stickers}</div>"
-                            f"</div>",
-                            unsafe_allow_html=True
-                        )
+            date_key = f"{int(year)}-{int(month):02d}-{day:02d}"
+            dconf = decos["decos"].get(date_key, {})
+            bg = dconf.get("bg", "#ffffff")
+            radius = dconf.get("radius", "12px")
+            stickers = " ".join(dconf.get("stickers", []))
 
-                        if st.button("열기", key=f"open_{date_key}", use_container_width=True):
-                            st.session_state.selected_date = date_key
-                            st.rerun()
+            # 🔥 열기 버튼 제거 + 셀 전체를 링크로 만듦
+            cell_html = f"""
+            <a href="?date={date_key}" target="_self" style="text-decoration:none;color:inherit;">
+                <div class='cal-card' style='background:{bg}; border-radius:{radius};'>
+                    <div class='cal-day'>{day}</div>
+                    <div class='cal-stickers'>{stickers}</div>
+                </div>
+            </a>
+            """
+            st.markdown(cell_html, unsafe_allow_html=True)
+
 
         # 🎀 꾸미기 패널
         if decorate_mode:
