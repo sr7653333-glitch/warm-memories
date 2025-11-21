@@ -356,9 +356,9 @@ if menu == "달력":
     # 선택된 날짜가 있으면 상단 오버레이 표시
     if st.session_state.get("selected_date"):
         render_detail_panel(st.session_state["selected_date"])
-
-    # -------------------- 자가진단 (받는이) --------------------
-    if menu == "자가진단" and role == "받는이":
+        
+# -------------------- 자가진단 (받는이) --------------------
+        if menu == "자가진단" and role == "받는이":
         st.title("📝 오늘의 자가진단")
         today = datetime.now().strftime("%Y-%m-%d")
         done = any(r.get("username") == username and r.get("date") == today for r in diagnosis_data["records"])
