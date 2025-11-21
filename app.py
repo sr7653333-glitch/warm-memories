@@ -237,11 +237,15 @@ else:
         if st.button("닫기"):
             st.session_state.selected_date = None
             st.rerun()
-
     # -------------------- 달력 --------------------
     if menu == "달력":
         st.title("🗓 하루 추억 달력")
         decos = load_decos(username)
+
+        # 날짜 선택 상태: URL에 date 쿼리가 있다면 반영 (이미 있다면 생략해도 됨)
+        qdate = get_query_value("date", None)
+        if qdate:
+            st.session_state.selected_date = qdate
 
         left, right = st.columns([1, 3], gap="large")
         with left:
@@ -259,47 +263,84 @@ else:
         with right:
             st.subheader(f"{int(year)}년 {int(month)}월")
 
-            # 그리드 스타일
+            # 버튼 모양 통일 스타일 (달력 셀 전용)
             st.markdown("""
             <style>
-                .cal-card {
-                    border:1px solid rgba(0,0,0,.08);
-                    border-radius:12px;
-                    min-height:96px;
-                    padding:8px;
-                    background:#fff;
+                .day-btn > button {
+                    width: 100% !important;
+                    min-height: 80px;
+                    border-radius: 12px;
+                    border: 1px solid rgba(0,0,0,.08);
+                    background: #ffffff;
+                    font-size: 18px;
+                    font-weight: 700;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-start;
+                    justify-content: flex-start;
+                    padding: 6px 8px;
+                    text-align: left;
+                    line-height: 1.2;
                 }
-                .cal-day { font-weight:800; margin-bottom:6px; }
-                .cal-stickers { font-size:20px; line-height:1.1; }
+                .day-btn > button:hover {
+                    box-shadow: 0 2px 6px rgba(0,0,0,.08);
+                }
+                .day-num {
+                    font-weight: 800;
+                    margin-bottom: 4px;
+                }
+                .day-stickers {
+                    font-size: 20px;
+                }
             </style>
             """, unsafe_allow_html=True)
 
-cal_mat = calendar.monthcalendar(int(year), int(month))
-for week in cal_mat:
-    cols = st.columns(7, gap="small")
-    for i, day in enumerate(week):
-        with cols[i]:
-            if day == 0:
-                st.write("")
-                continue
+            cal_mat = calendar.monthcalendar(int(year), int(month))
+            for week in cal_mat:
+                cols = st.columns(7, gap="small")
+                for i, day in enumerate(week):
+                    with cols[i]:
+                        if day == 0:
+                            st.write("")   # 빈 칸
+                            continue
 
-            date_key = f"{int(year)}-{int(month):02d}-{day:02d}"
-            dconf = decos["decos"].get(date_key, {})
-            bg = dconf.get("bg", "#ffffff")
-            radius = dconf.get("radius", "12px")
-            stickers = " ".join(dconf.get("stickers", []))
+                        date_key = f"{int(year)}-{int(month):02d}-{day:02d}"
+                        dconf = decos["decos"].get(date_key, {})
+                        stickers = " ".join(dconf.get("stickers", []))
 
-            # 🔥 열기 버튼 제거 + 셀 전체를 링크로 만듦
-            cell_html = f"""
-            <a href="?date={date_key}" target="_self" style="text-decoration:none;color:inherit;">
-                <div class='cal-card' style='background:{bg}; border-radius:{radius};'>
-                    <div class='cal-day'>{day}</div>
-                    <div class='cal-stickers'>{stickers}</div>
-                </div>
-            </a>
-            """
-            st.markdown(cell_html, unsafe_allow_html=True)
+                        # 버튼 라벨을 HTML로 예쁘게 만들기
+                        label_html = f"""
+                        <span class="day-num">{day}</span>
+                        <span class="day-stickers">{stickers}</span>
+                        """
 
+                        # st.button은 텍스트만 받으니까, placeholder + unsafe_allow_html 트릭 사용
+                        # 버튼을 감싸는 컨테이너에 class를 줘서 스타일 적용
+                        btn_placeholder = st.empty()
+                        clicked = btn_placeholder.button(
+                            label=label_html,
+                            key=f"day_{date_key}",
+                            use_container_width=True
+                        )
+
+                        # 버튼 요소에 CSS 클래스 부여
+                        st.markdown(
+                            "<script>"
+                            "const btns = window.parent.document.querySelectorAll('button[kind=\"secondary\"]');"
+                            "btns.forEach(b => { if (!b.classList.contains('styled-day-btn')) {"
+                            "  b.classList.add('styled-day-btn');"
+                            "}});"
+                            "</script>",
+                            unsafe_allow_html=True
+                        )
+                        st.markdown(
+                            "<style>.styled-day-btn{display:flex;flex-direction:column;align-items:flex-start;}</style>",
+                            unsafe_allow_html=True
+                        )
+
+                        if clicked:
+                            st.session_state.selected_date = date_key
+                            st.rerun()
 
         # 🎀 꾸미기 패널
         if decorate_mode:
@@ -344,20 +385,21 @@ for week in cal_mat:
                             st.session_state.selected_date = None
                             st.rerun()
 
-
                 with c2:
                     st.markdown("**미리보기**")
                     st.markdown(
-                        f"<div class='cal-card' style='background:{bg}; border-radius:{radius}; min-height:140px;'>"
+                        f"<div class='cal-card' style='border:1px solid rgba(0,0,0,.08); "
+                        f"border-radius:{radius}; min-height:140px; padding:8px; background:{bg};'>"
                         f"<div class='cal-day'>{date_key[-2:]}</div>"
                         f"<div class='cal-stickers'>{' '.join(picked)}</div>"
                         f"</div>",
                         unsafe_allow_html=True
                     )
 
-        # 선택된 날짜가 있으면 상단 오버레이 표시
+        # 선택된 날짜가 있으면 상단 오버레이 표시 (편지/추억)
         if st.session_state.get("selected_date"):
             render_detail_panel(st.session_state["selected_date"])
+
 
     # -------------------- 자가진단 (받는이) --------------------
     if menu == "자가진단" and role == "받는이":
