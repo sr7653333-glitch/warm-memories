@@ -236,170 +236,124 @@ else:
 
         if st.button("닫기"):
             st.session_state.selected_date = None
-            st.rerun()
-    # -------------------- 달력 --------------------
-    if menu == "달력":
-        st.title("🗓 하루 추억 달력")
-        decos = load_decos(username)
+     # -------------------- 달력 --------------------
+if menu == "달력":
+    st.title("🗓 하루 추억 달력")
+    decos = load_decos(username)
 
-        # 날짜 선택 상태: URL에 date 쿼리가 있다면 반영 (이미 있다면 생략해도 됨)
-        qdate = get_query_value("date", None)
-        if qdate:
-            st.session_state.selected_date = qdate
+    left, right = st.columns([1, 3], gap="large")
+    with left:
+        st.markdown("#### 📅 달력 조정")
+        year = st.number_input("연도", 2000, 2100, datetime.now().year, step=1)
+        month = st.number_input("월", 1, 12, datetime.now().month, step=1)
+        decorate_mode = st.toggle("🎀 꾸미기 모드", value=False, help="날짜별 배경/스티커/모서리 둥글기 저장")
+        
+        if st.session_state.selected_date:
+            st.info(f"선택된 날짜: **{st.session_state.selected_date}**")
+            if st.button("선택 해제", key="left_unselect"):
+                st.session_state.selected_date = None
+                st.rerun()
 
-        left, right = st.columns([1, 3], gap="large")
-        with left:
-            st.markdown("#### 📅 달력 조정")
-            year = st.number_input("연도", 2000, 2100, datetime.now().year, step=1)
-            month = st.number_input("월", 1, 12, datetime.now().month, step=1)
-            decorate_mode = st.toggle("🎀 꾸미기 모드", value=False, help="날짜별 배경/스티커/모서리 둥글기 저장")
-            
-            if st.session_state.selected_date:
-                st.info(f"선택된 날짜: **{st.session_state.selected_date}**")
-                if st.button("선택 해제", key="left_unselect"):
-                    st.session_state.selected_date = None
-                    st.rerun()
+    with right:
+        st.subheader(f"{int(year)}년 {int(month)}월")
 
-        with right:
-            st.subheader(f"{int(year)}년 {int(month)}월")
+        # 그리드 스타일
+        st.markdown("""
+        <style>
+            .cal-card {
+                border:1px solid rgba(0,0,0,.08);
+                border-radius:12px;
+                min-height:96px;
+                padding:8px;
+                background:#fff;
+            }
+            .cal-day { font-weight:800; margin-bottom:6px; }
+            .cal-stickers { font-size:20px; line-height:1.1; }
+        </style>
+        """, unsafe_allow_html=True)
 
-            # 버튼 모양 통일 스타일 (달력 셀 전용)
-            st.markdown("""
-            <style>
-                .day-btn > button {
-                    width: 100% !important;
-                    min-height: 80px;
-                    border-radius: 12px;
-                    border: 1px solid rgba(0,0,0,.08);
-                    background: #ffffff;
-                    font-size: 18px;
-                    font-weight: 700;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: flex-start;
-                    justify-content: flex-start;
-                    padding: 6px 8px;
-                    text-align: left;
-                    line-height: 1.2;
-                }
-                .day-btn > button:hover {
-                    box-shadow: 0 2px 6px rgba(0,0,0,.08);
-                }
-                .day-num {
-                    font-weight: 800;
-                    margin-bottom: 4px;
-                }
-                .day-stickers {
-                    font-size: 20px;
-                }
-            </style>
-            """, unsafe_allow_html=True)
+        cal_mat = calendar.monthcalendar(int(year), int(month))
+        for week in cal_mat:
+            cols = st.columns(7, gap="small")
+            for i, day in enumerate(week):
+                with cols[i]:
+                    if day == 0:
+                        st.write("")
+                        continue
+                    date_key = f"{int(year)}-{int(month):02d}-{day:02d}"
+                    dconf = decos["decos"].get(date_key, {})
+                    bg = dconf.get("bg", "#ffffff")
+                    radius = dconf.get("radius", "12px")
+                    stickers = " ".join(dconf.get("stickers", []))
 
-            cal_mat = calendar.monthcalendar(int(year), int(month))
-            for week in cal_mat:
-                cols = st.columns(7, gap="small")
-                for i, day in enumerate(week):
-                    with cols[i]:
-                        if day == 0:
-                            st.write("")   # 빈 칸
-                            continue
-
-                        date_key = f"{int(year)}-{int(month):02d}-{day:02d}"
-                        dconf = decos["decos"].get(date_key, {})
-                        stickers = " ".join(dconf.get("stickers", []))
-
-                        # 버튼 라벨을 HTML로 예쁘게 만들기
-                        label_html = f"""
-                        <span class="day-num">{day}</span>
-                        <span class="day-stickers">{stickers}</span>
-                        """
-
-                        # st.button은 텍스트만 받으니까, placeholder + unsafe_allow_html 트릭 사용
-                        # 버튼을 감싸는 컨테이너에 class를 줘서 스타일 적용
-                        btn_placeholder = st.empty()
-                        clicked = btn_placeholder.button(
-                            label=label_html,
-                            key=f"day_{date_key}",
-                            use_container_width=True
-                        )
-
-                        # 버튼 요소에 CSS 클래스 부여
-                        st.markdown(
-                            "<script>"
-                            "const btns = window.parent.document.querySelectorAll('button[kind=\"secondary\"]');"
-                            "btns.forEach(b => { if (!b.classList.contains('styled-day-btn')) {"
-                            "  b.classList.add('styled-day-btn');"
-                            "}});"
-                            "</script>",
-                            unsafe_allow_html=True
-                        )
-                        st.markdown(
-                            "<style>.styled-day-btn{display:flex;flex-direction:column;align-items:flex-start;}</style>",
-                            unsafe_allow_html=True
-                        )
-
-                        if clicked:
-                            st.session_state.selected_date = date_key
-                            st.rerun()
-
-        # 🎀 꾸미기 패널
-        if decorate_mode:
-            st.markdown("---")
-            st.subheader("🎀 달력 꾸미기 (날짜별)")
-            if not st.session_state.selected_date:
-                st.info("달력에서 날짜를 먼저 선택하세요.")
-            else:
-                date_key = st.session_state.selected_date
-                decos = load_decos(username)  # 최신 로드
-                d = decos["decos"].get(date_key, {})
-                c1, c2 = st.columns([2, 1], gap="large")
-                with c1:
-                    st.markdown(f"**꾸미는 날짜:** {date_key}")
-                    bg = st.color_picker("배경색", value=d.get("bg", "#ffffff"))
-                    r_choices = ["6px", "10px", "12px", "16px", "20px", "999px"]
-                    current_radius = d.get("radius", "12px")
-                    if current_radius not in r_choices:
-                        r_choices.append(current_radius)
-                    radius = st.selectbox("모서리 둥글기", r_choices, index=r_choices.index(current_radius))
-                    picked = st.multiselect("스티커(이모지)", STICKER_PRESETS, default=d.get("stickers", []))
-                    extra = st.text_input("추가 이모지/텍스트", value="")
-                    if extra and extra not in picked:
-                        picked.append(extra)
-
-                    col_s, col_r, col_c = st.columns(3)
-                    with col_s:
-                        if st.button("🗂 꾸미기 저장"):
-                            decos["decos"][date_key] = {"bg": bg, "radius": radius, "stickers": picked}
-                            save_decos(username, decos)
-                            st.success("저장되었습니다! 달력/상세에 즉시 반영됩니다.")
-                            st.rerun()
-                    with col_r:
-                        if st.button("♻️ 이 날짜 초기화"):
-                            if date_key in decos["decos"]:
-                                del decos["decos"][date_key]
-                                save_decos(username, decos)
-                                st.info("초기화했습니다.")
-                                st.rerun()
-                    with col_c:
-                        if st.button("선택 해제", key="decor_unselect"):
-                            st.session_state.selected_date = None
-                            st.rerun()
-
-                with c2:
-                    st.markdown("**미리보기**")
                     st.markdown(
-                        f"<div class='cal-card' style='border:1px solid rgba(0,0,0,.08); "
-                        f"border-radius:{radius}; min-height:140px; padding:8px; background:{bg};'>"
-                        f"<div class='cal-day'>{date_key[-2:]}</div>"
-                        f"<div class='cal-stickers'>{' '.join(picked)}</div>"
+                        f"<div class='cal-card' style='background:{bg}; border-radius:{radius};'>"
+                        f"<div class='cal-day'>{day}</div>"
+                        f"<div class='cal-stickers'>{stickers}</div>"
                         f"</div>",
                         unsafe_allow_html=True
                     )
 
-        # 선택된 날짜가 있으면 상단 오버레이 표시 (편지/추억)
-        if st.session_state.get("selected_date"):
-            render_detail_panel(st.session_state["selected_date"])
+                    if st.button("열기", key=f"open_{date_key}", use_container_width=True):
+                        st.session_state.selected_date = date_key
+                        st.rerun()
 
+    # 🎀 꾸미기 패널
+    if decorate_mode:
+        st.markdown("---")
+        st.subheader("🎀 달력 꾸미기 (날짜별)")
+        if not st.session_state.selected_date:
+            st.info("달력에서 날짜를 먼저 선택하세요.")
+        else:
+            date_key = st.session_state.selected_date
+            decos = load_decos(username)  # 최신 로드
+            d = decos["decos"].get(date_key, {})
+            c1, c2 = st.columns([2, 1], gap="large")
+            with c1:
+                st.markdown(f"**꾸미는 날짜:** {date_key}")
+                bg = st.color_picker("배경색", value=d.get("bg", "#ffffff"))
+                r_choices = ["6px", "10px", "12px", "16px", "20px", "999px"]
+                current_radius = d.get("radius", "12px")
+                if current_radius not in r_choices:
+                    r_choices.append(current_radius)
+                radius = st.selectbox("모서리 둥글기", r_choices, index=r_choices.index(current_radius))
+                picked = st.multiselect("스티커(이모지)", STICKER_PRESETS, default=d.get("stickers", []))
+                extra = st.text_input("추가 이모지/텍스트", value="")
+                if extra and extra not in picked:
+                    picked.append(extra)
+
+                col_s, col_r, col_c = st.columns(3)
+                with col_s:
+                    if st.button("🗂 꾸미기 저장"):
+                        decos["decos"][date_key] = {"bg": bg, "radius": radius, "stickers": picked}
+                        save_decos(username, decos)
+                        st.success("저장되었습니다! 달력/상세에 즉시 반영됩니다.")
+                        st.rerun()
+                with col_r:
+                    if st.button("♻️ 이 날짜 초기화"):
+                        if date_key in decos["decos"]:
+                            del decos["decos"][date_key]
+                            save_decos(username, decos)
+                            st.info("초기화했습니다.")
+                            st.rerun()
+                with col_c:
+                    if st.button("선택 해제", key="decor_unselect"):
+                        st.session_state.selected_date = None
+                        st.rerun()
+
+            with c2:
+                st.markdown("**미리보기**")
+                st.markdown(
+                    f"<div class='cal-card' style='background:{bg}; border-radius:{radius}; min-height:140px;'>"
+                    f"<div class='cal-day'>{date_key[-2:]}</div>"
+                    f"<div class='cal-stickers'>{' '.join(picked)}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+
+    # 선택된 날짜가 있으면 상단 오버레이 표시
+    if st.session_state.get("selected_date"):
+        render_detail_panel(st.session_state["selected_date"])
 
     # -------------------- 자가진단 (받는이) --------------------
     if menu == "자가진단" and role == "받는이":
