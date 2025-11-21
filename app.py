@@ -445,9 +445,9 @@ else:
             q_text = st.text_input("질문 내용 (예: '물을 충분히 드셨나요?')")
             q_type = st.selectbox("질문 유형", ["예/아니오 단답형", "척도(숫자)형", "선택형", "텍스트 답변형"], index=0)
             colA, colB, colC = st.columns(3)
-            with colA: minv = st.number_input("scale 최소값", value=1, step=1)
-            with colB: maxv = st.number_input("scale 최대값", value=5, step=1)
-            with colC: dflt = st.number_input("scale 기본값", value=3, step=1)
+            with colA: minv = st.number_input("최소값", value=1, step=1)
+            with colB: maxv = st.number_input("최대값", value=5, step=1)
+            with colC: dflt = st.number_input("기본값", value=3, step=1)
             opts_txt = st.text_input("choice 옵션(쉼표로 구분)", value="아니오,예")
             d_idx = st.number_input("choice 기본 인덱스", value=0, step=1)
 
