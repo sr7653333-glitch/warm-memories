@@ -195,7 +195,7 @@ else:
     # -------------------- 상세(상단 고정 오버레이) --------------------
     def render_detail_panel(sel_date: str):
             if "memory_hint" not in st.session_state:
-        st.session_state["memory_hint"] = ""
+                st.session_state["memory_hint"] = ""
         st.markdown(
             f"""
             <div style="
