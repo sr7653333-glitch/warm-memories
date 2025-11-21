@@ -193,24 +193,22 @@ else:
     st.markdown(f"<style>.stApp{{background-color:{theme_colors[st.session_state.theme]};}}</style>", unsafe_allow_html=True)
 
     STICKER_PRESETS = ["🌸", "🌼", "🌟", "💖", "✨", "🍀", "🧸", "🎀", "📸", "☕", "🍰", "🎈", "📝", "👣", "🎵"]
-
-    # -------------------- 상세(상단 고정 오버레이) --------------------
+# -------------------- 상세(상단 고정 오버레이) --------------------
+    
     def render_detail_panel(sel_date: str):
-        st.markdown(
-            f"""
-            <div style="
-                position: sticky; top: 0; z-index: 9999;
-                background: rgba(255,255,255,0.98);
-                backdrop-filter: blur(4px);
-                border: 2px solid #eee; border-radius: 16px;
-                padding: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.08);
-                margin-bottom: 12px;">
-                <h3 style="margin: 0;">📅 {sel_date}</h3>
-                <div style="font-size: 13px; color: #666;">상단 고정 패널입니다. 닫기를 누르면 사라져요.</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+    st.markdown(
+        f"""
+        <div style="
+        position: sticky; top: 0; z-index: 9999;
+        background: rgba(255,255,255,0.98);
+        backdrop-filter: blur(4px);
+        border: 2px solid #eee; border-radius: 16px;
+        padding: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.08);
+        margin-bottom: 12px;">
+        <h3 style="margin: 0;">📅 {sel_date}</h3>
+        <div style="font-size: 13px; color: #666;">상단 고정 패널입니다. 닫기를 누르면 사라져요.</div>
+        </div>""",
+        unsafe_allow_html=True)
 
         st.subheader("📔 추억")
         mem = load_mems(username)["memories"].get(sel_date, [])
