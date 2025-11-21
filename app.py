@@ -228,10 +228,10 @@ for i, q in enumerate(preset_questions):
                 st.markdown(f"- **{item['title']}** — {item['text']}")
         else:
             st.info("아직 기록이 없어요!")
-
+            
         with st.form("add_memory_form", clear_on_submit=True):
             t = st.text_input("제목")
-            c = st.text_area("내용", height=120)
+            c = st.text_area("내용", height=120, value=st.session_state.get("memory_hint", ""))
             save_btn = st.form_submit_button("저장")
             if save_btn:
                 if not t or not c:
@@ -243,6 +243,8 @@ for i, q in enumerate(preset_questions):
                     )
                     save_mems(username, data)
                     st.success("추억이 저장되었습니다!")
+                    # 저장 후 힌트 초기화
+                    st.session_state["memory_hint"] = ""
                     st.rerun()
 
         if st.button("닫기"):
