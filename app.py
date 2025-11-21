@@ -192,46 +192,64 @@ else:
 
     STICKER_PRESETS = ["🌸", "🌼", "🌟", "💖", "✨", "🍀", "🧸", "🎀", "📸", "☕", "🍰", "🎈", "📝", "👣", "🎵"]
 
-    # -------------------- 상세(상단 고정 오버레이) --------------------
+
+        # -------------------- 상세(상단 고정 오버레이) --------------------
     def render_detail_panel(sel_date: str):
-            if "memory_hint" not in st.session_state:
-                st.session_state["memory_hint"] = ""
-                st.markdown(
-                    f"""
-                    <div style="
-                    position: sticky; top: 0; z-index: 9999;
-                    background: rgba(255,255,255,0.98);
-                    backdrop-filter: blur(4px);
-                    border: 2px solid #eee; border-radius: 16px;
-                    padding: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.08);
-                    margin-bottom: 12px;">
-                    <h3 style="margin: 0;">📅 {sel_date}</h3>
-                    <div style="font-size: 13px; color: #666;">상단 고정 패널입니다. 닫기를 누르면 사라져요.</div>
-                    </div>""",
-                    unsafe_allow_html=True)
 
-st.subheader("📔 추억")
-# ✨ 오늘의 질문(프리셋)
-st.markdown("##### ✨ 오늘의 질문")
-preset_questions = ["오늘 가장 기억에 남는 일은 무엇인가요?",
+        # ✨ 오늘의 질문 힌트용 세션 값 초기화
+        if "memory_hint" not in st.session_state:
+            st.session_state["memory_hint"] = ""
+
+        # 상단 고정 패널
+        st.markdown(
+            f"""
+            <div style="
+                position: sticky; top: 0; z-index: 9999;
+                background: rgba(255,255,255,0.98);
+                backdrop-filter: blur(4px);
+                border: 2px solid #eee; border-radius: 16px;
+                padding: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.08);
+                margin-bottom: 12px;">
+                <h3 style="margin: 0;">📅 {sel_date}</h3>
+                <div style="font-size: 13px; color: #666;">상단 고정 패널입니다. 닫기를 누르면 사라져요.</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.subheader("📔 추억")
+
+        # ✨ 오늘의 질문 버튼들
+        st.markdown("##### ✨ 오늘의 질문")
+        preset_questions = [
+            "오늘 가장 기억에 남는 일은 무엇인가요?",
             "오늘 누구와 이야기하면서 기분이 좋았나요?",
-            "오늘 고마웠던 일 한 가지를 적어볼까요?",]
-q_cols = st.columns(len(preset_questions))
-for i, q in enumerate(preset_questions):
-    with q_cols[i]:
-        if st.button(q, key=f"qbtn_{sel_date}_{i}", use_container_width=True):
-            st.session_state["memory_hint"] = q + "\n"
+            "오늘 고마웠던 일 한 가지를 적어볼까요?",
+        ]
 
+        q_cols = st.columns(len(preset_questions))
+        for i, q in enumerate(preset_questions):
+            with q_cols[i]:
+                if st.button(q, key=f"qbtn_{sel_date}_{i}", use_container_width=True):
+                    # 버튼 누르면 내용 힌트에 질문 문장 넣기
+                    st.session_state["memory_hint"] = q + "\n"
+
+        # 기존에 저장된 추억들 목록
         mem = load_mems(username)["memories"].get(sel_date, [])
         if mem:
             for item in mem:
                 st.markdown(f"- **{item['title']}** — {item['text']}")
         else:
             st.info("아직 기록이 없어요!")
-            
+
+        # 새 추억 작성 폼
         with st.form("add_memory_form", clear_on_submit=True):
             t = st.text_input("제목")
-            c = st.text_area("내용", height=120, value=st.session_state.get("memory_hint", ""))
+            c = st.text_area(
+                "내용",
+                height=120,
+                value=st.session_state.get("memory_hint", "")
+            )
             save_btn = st.form_submit_button("저장")
             if save_btn:
                 if not t or not c:
@@ -243,11 +261,12 @@ for i, q in enumerate(preset_questions):
                     )
                     save_mems(username, data)
                     st.success("추억이 저장되었습니다!")
-                    # 저장 후 힌트 초기화
+                    # 저장 후 힌트 비우기
                     st.session_state["memory_hint"] = ""
                     st.rerun()
 
-        if st.button("닫기"):
+        # 패널 닫기 버튼
+        if st.button("닫기", key=f"close_{sel_date}"):
             st.session_state.selected_date = None
             st.rerun()
 
