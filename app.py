@@ -76,6 +76,17 @@ def get_query_value(key, default=None):
         return v[0] if isinstance(v, list) else v
     return default
 
+st.markdown("""
+<style>
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+
+html, body, [class*="css"] {
+    font-family: "Pretendard", sans-serif !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 # -------------------- 데이터 파일 --------------------
 ACCOUNTS_FILE  = "accounts/accounts.json"
 GROUPS_FILE    = "accounts/groups.json"
