@@ -252,9 +252,10 @@ else:
 
             if st.session_state.selected_date:
                 st.info(f"선택된 날짜: **{st.session_state.selected_date}**")
-                if st.button("선택 해제"):
+                if st.button("선택 해제", key="left_unselect"):
                     st.session_state.selected_date = None
                     st.rerun()
+
 
         with right:
             st.subheader(f"{int(year)}년 {int(month)}월")
@@ -339,7 +340,7 @@ else:
                                 st.info("초기화했습니다.")
                                 st.rerun()
                     with col_c:
-                        if st.button("선택 해제"):
+                        if st.button("선택 해제", key="decor_unselect"):
                             st.session_state.selected_date = None
                             st.rerun()
 
