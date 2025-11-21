@@ -238,7 +238,9 @@ else:
 
         if st.button("닫기"):
             st.session_state.selected_date = None
-     # -------------------- 달력 --------------------
+
+
+# -------------------- 달력 --------------------
 if menu == "달력":
     st.title("🗓 하루 추억 달력")
     decos = load_decos(username)
