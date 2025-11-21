@@ -448,8 +448,8 @@ else:
             with colA: minv = st.number_input("최소값", value=1, step=1)
             with colB: maxv = st.number_input("최대값", value=5, step=1)
             with colC: dflt = st.number_input("기본값", value=3, step=1)
-            opts_txt = st.text_input("choice 옵션(쉼표로 구분)", value="아니오,예")
-            d_idx = st.number_input("choice 기본 인덱스", value=0, step=1)
+            opts_txt = st.text_input("(선택형)옵션(쉼표로 구분)", value="아니오,예")
+            d_idx = st.number_input("(선택형)기본 인덱스", value=0, step=1)
 
             receivers = sorted({m for g in my_groups for m in g["members"] if m != username})
             targets = st.multiselect("질문을 받을 받는이", receivers)
