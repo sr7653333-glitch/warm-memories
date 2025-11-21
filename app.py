@@ -194,6 +194,8 @@ else:
 
     # -------------------- 상세(상단 고정 오버레이) --------------------
     def render_detail_panel(sel_date: str):
+            if "memory_hint" not in st.session_state:
+        st.session_state["memory_hint"] = ""
         st.markdown(
             f"""
             <div style="
@@ -210,7 +212,18 @@ else:
             unsafe_allow_html=True
         )
 
-        st.subheader("📔 추억")
+st.subheader("📔 추억")
+# ✨ 오늘의 질문(프리셋)
+st.markdown("##### ✨ 오늘의 질문")
+preset_questions = ["오늘 가장 기억에 남는 일은 무엇인가요?",
+            "오늘 누구와 이야기하면서 기분이 좋았나요?",
+            "오늘 고마웠던 일 한 가지를 적어볼까요?",]
+q_cols = st.columns(len(preset_questions))
+for i, q in enumerate(preset_questions):
+    with q_cols[i]:
+        if st.button(q, key=f"qbtn_{sel_date}_{i}", use_container_width=True):
+            st.session_state["memory_hint"] = q + "\n"
+
         mem = load_mems(username)["memories"].get(sel_date, [])
         if mem:
             for item in mem:
